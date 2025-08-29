@@ -1,0 +1,2727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SiliconFlow API Pool - 现代化管理面板</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .success-card {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        .warning-card {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        .error-card {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        .dark-mode {
+            background-color: #1a202c;
+            color: #e2e8f0;
+        }
+        .dark-mode .bg-white {
+            background-color: #2d3748 !important;
+            color: #e2e8f0;
+        }
+        .dark-mode .text-gray-600 {
+            color: #a0aec0 !important;
+        }
+        .dark-mode .border-gray-200 {
+            border-color: #4a5568 !important;
+        }
+
+        /* 密钥表格滚动条样式 */
+        .max-h-80::-webkit-scrollbar {
+            width: 8px;
+        }
+        .max-h-80::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .max-h-80::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .max-h-80::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* 表格行悬停效果 */
+        .table-row-hover:hover {
+            background-color: #f8fafc !important;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        /* 图表容器固定尺寸 */
+        .chart-container {
+            width: 128px !important;
+            height: 128px !important;
+            position: relative;
+        }
+
+        .chart-container canvas {
+            max-width: 128px !important;
+            max-height: 128px !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <!-- 顶部导航栏 -->
+    <nav class="gradient-bg shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <i class="fas fa-microchip text-white text-2xl mr-3"></i>
+                    <h1 class="text-white text-xl font-bold">SiliconFlow API Pool</h1>
+                    <span class="ml-3 px-2 py-1 bg-white bg-opacity-20 text-white text-xs rounded-full">v2.0.0</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="darkModeToggle" class="text-white hover:text-gray-200 transition-colors">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button id="refreshBtn" class="text-white hover:text-gray-200 transition-colors">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <div class="text-white text-sm">
+                        <span id="currentTime"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要内容区域 -->
+    <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- 认证区域 -->
+        <div id="authSection" class="mb-6">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-lg font-semibold mb-4">🔐 身份验证</h2>
+                <div class="flex space-x-4">
+                    <input type="password" id="authKey" placeholder="请输入认证密钥" 
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <button id="authBtn" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                        验证
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 仪表板内容 -->
+        <div id="dashboardContent" class="hidden">
+            <!-- 系统状态卡片 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="metric-card rounded-lg p-6 text-white card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-white text-opacity-80 text-sm">当前会话请求</p>
+                            <p id="sessionRequests" class="text-2xl font-bold">-</p>
+                            <p id="sessionRequestsDetail" class="text-xs text-white text-opacity-60">本次启动后的请求数</p>
+                        </div>
+                        <i class="fas fa-chart-line text-3xl text-white text-opacity-60"></i>
+                    </div>
+                </div>
+
+                <div class="success-card rounded-lg p-6 text-white card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-white text-opacity-80 text-sm">成功率</p>
+                            <p id="successRate" class="text-2xl font-bold">-</p>
+                            <p id="successRateDetail" class="text-xs text-white text-opacity-60">-</p>
+                        </div>
+                        <i class="fas fa-check-circle text-3xl text-white text-opacity-60"></i>
+                    </div>
+                </div>
+
+                <div class="warning-card rounded-lg p-6 text-white card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-white text-opacity-80 text-sm">活跃密钥</p>
+                            <p id="activeKeys" class="text-2xl font-bold">-</p>
+                        </div>
+                        <i class="fas fa-key text-3xl text-white text-opacity-60"></i>
+                    </div>
+                </div>
+
+                <div class="error-card rounded-lg p-6 text-white card-hover">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-white text-opacity-80 text-sm">历史总请求</p>
+                            <p id="totalHistoryRequests" class="text-2xl font-bold">-</p>
+                            <p id="totalHistoryDetail" class="text-xs text-white text-opacity-60">累计保存的请求数</p>
+                        </div>
+                        <i class="fas fa-database text-3xl text-white text-opacity-60"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">📈 请求趋势分析</h3>
+                        <div class="flex items-center space-x-2">
+                            <select id="trendPeriod" class="px-3 py-1 border rounded text-sm">
+                                <!-- 动态生成选项 -->
+                            </select>
+                            <span id="dataAvailability" class="text-xs text-gray-500"></span>
+                        </div>
+                    </div>
+                    <canvas id="requestTrendChart" width="400" height="200"></canvas>
+                    <div class="mt-2 text-xs text-gray-600">
+                        <span class="inline-block w-3 h-3 bg-green-500 mr-1"></span>成功请求
+                        <span class="inline-block w-3 h-3 bg-red-500 mr-1 ml-3"></span>失败请求
+                        <span class="inline-block w-3 h-3 bg-blue-500 mr-1 ml-3"></span>总请求
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <h3 class="text-lg font-semibold mb-4">🔑 密钥健康度仪表板</h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div class="text-center">
+                            <div class="chart-container mx-auto">
+                                <canvas id="balanceDistChart"></canvas>
+                            </div>
+                            <p class="text-sm text-gray-600 mt-2">余额分布</p>
+                        </div>
+                        <div class="text-center">
+                            <div class="chart-container mx-auto">
+                                <canvas id="usageDistChart"></canvas>
+                            </div>
+                            <p class="text-sm text-gray-600 mt-2">使用频率</p>
+                        </div>
+                    </div>
+                    <div class="text-xs space-y-1">
+                        <div id="keyHealthSummary">
+                            <div class="flex justify-between">
+                                <span>🟢 健康密钥:</span>
+                                <span id="healthyKeys">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>🟡 低余额预警:</span>
+                                <span id="lowBalanceKeys">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>🔴 异常密钥:</span>
+                                <span id="errorKeys">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>💰 平均余额:</span>
+                                <span id="avgBalance">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 详细请求信息面板 -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8 card-hover">
+                <h3 class="text-lg font-semibold mb-4">📋 详细请求信息</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-blue-800">当前会话统计</h4>
+                        <div id="sessionStats" class="mt-2 text-sm">
+                            <div>总请求: <span id="sessionTotal">-</span></div>
+                            <div>成功: <span id="sessionSuccess">-</span></div>
+                            <div>失败: <span id="sessionFailed">-</span></div>
+                            <div>成功率: <span id="sessionRate">-</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-green-800">历史累计统计</h4>
+                        <div id="totalStats" class="mt-2 text-sm">
+                            <div>总请求: <span id="historyTotal">-</span></div>
+                            <div>总Token: <span id="historyTokens">-</span></div>
+                            <div>估算成本: <span id="historyCost">-</span></div>
+                            <div>最后更新: <span id="lastUpdate">-</span></div>
+                        </div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-purple-800">模型使用分布</h4>
+                        <div id="modelStats" class="mt-2 text-sm">
+                            <!-- 动态填充 -->
+                        </div>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-lg">
+                        <h4 class="font-semibold text-orange-800">时间分布</h4>
+                        <div id="timeStats" class="mt-2 text-sm">
+                            <!-- 动态填充 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 密钥管理表格 -->
+            <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold">🔐 API密钥管理</h3>
+                    <div class="flex space-x-2">
+                        <button id="addKeysBtn" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-plus mr-2"></i>添加密钥
+                        </button>
+                        <button id="checkBalancesBtn" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                            <i class="fas fa-dollar-sign mr-2"></i>检查余额
+                        </button>
+                        <button id="batchOperationsBtn" class="px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors">
+                            <i class="fas fa-tasks mr-2"></i>批量操作
+                        </button>
+                        <button id="exportKeysBtn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-download mr-2"></i>导出数据
+                        </button>
+                        <button id="debugDataBtn" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors">
+                            <i class="fas fa-bug mr-2"></i>调试数据
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 高级筛选 -->
+                <div class="mb-4 p-4 bg-gray-50 rounded-lg">
+                    <div class="flex flex-wrap gap-4 items-center">
+                        <div class="flex items-center space-x-2">
+                            <label class="text-sm font-medium text-gray-700">状态:</label>
+                            <select id="statusFilter" class="px-3 py-1 border border-gray-300 rounded-md text-sm">
+                                <option value="">全部</option>
+                                <option value="active">活跃</option>
+                                <option value="inactive">禁用</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-sm font-medium text-gray-700">余额:</label>
+                            <select id="balanceFilter" class="px-3 py-1 border border-gray-300 rounded-md text-sm">
+                                <option value="">全部</option>
+                                <option value="high">高余额 (>$10)</option>
+                                <option value="medium">中余额 ($1-$10)</option>
+                                <option value="low">低余额 (<$1)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <label class="text-sm font-medium text-gray-700">搜索:</label>
+                            <input type="text" id="searchFilter" placeholder="搜索密钥ID..."
+                                   class="px-3 py-1 border border-gray-300 rounded-md text-sm w-40">
+                        </div>
+                        <button id="clearFilters" class="px-3 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 text-sm">
+                            清除筛选
+                        </button>
+                        <div class="ml-auto text-sm text-gray-600">
+                            显示: <span id="filteredCount">0</span> / <span id="totalCount">0</span> 个密钥
+                        </div>
+                    </div>
+                </div>
+                <!-- 密钥表格容器 - 限制高度并添加滚动 -->
+                <div class="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                    <!-- 表格头部 (固定不滚动) -->
+                    <div class="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                        <table class="min-w-full table-auto">
+                            <thead>
+                                <tr>
+                                    <th class="px-4 py-3 text-left w-12">
+                                        <input type="checkbox" id="selectAllKeys" class="rounded">
+                                    </th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">密钥ID</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">状态</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">余额</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">使用次数</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">最后使用</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24">操作</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+
+                    <!-- 表格内容 (可滚动区域) -->
+                    <div class="max-h-80 overflow-y-auto overflow-x-auto">
+                        <table class="min-w-full table-auto">
+                            <tbody id="keysTableBody" class="bg-white divide-y divide-gray-200">
+                                <!-- 动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 滚动提示 -->
+                    <div id="scrollHint" class="hidden bg-blue-50 border-t border-blue-200 px-4 py-2 text-center">
+                        <span class="text-sm text-blue-600">
+                            <i class="fas fa-arrow-down mr-1"></i>
+                            向下滚动查看更多密钥 (共 <span id="totalKeysCount">0</span> 个)
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统信息 -->
+            <div class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <h3 class="text-lg font-semibold mb-4">⚡ 性能指标</h3>
+                    <div id="performanceMetrics" class="space-y-2">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">🛡️ 安全统计</h3>
+                        <button id="securitySettingsBtn" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+                            <i class="fas fa-cog mr-1"></i>设置
+                        </button>
+                    </div>
+                    <div id="securityStats" class="space-y-2">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <h3 class="text-lg font-semibold mb-4">📈 实时状态</h3>
+                    <div id="realTimeStatus" class="space-y-2">
+                        <!-- 动态填充 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载动画 -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span>加载中...</span>
+        </div>
+    </div>
+
+    <!-- 添加密钥模态框 -->
+    <div id="addKeysModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">🔑 批量添加API密钥</h3>
+                <button id="closeAddKeysModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    API密钥 (每行一个)
+                </label>
+                <textarea
+                    id="keysTextarea"
+                    rows="8"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&#10;sk-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy&#10;sk-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+                ></textarea>
+            </div>
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    RPM限制 (每分钟请求数)
+                </label>
+                <input
+                    type="number"
+                    id="rpmLimit"
+                    value="999999"
+                    min="1"
+                    max="999999"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+            </div>
+            <div class="flex justify-end space-x-2">
+                <button id="cancelAddKeys" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors">
+                    取消
+                </button>
+                <button id="confirmAddKeys" class="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors">
+                    <i class="fas fa-plus mr-2"></i>添加密钥
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批量操作模态框 -->
+    <div id="batchOperationsModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">🔧 批量操作</h3>
+                <button id="closeBatchModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-3">
+                <button id="batchEnableBtn" class="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
+                    <i class="fas fa-toggle-on mr-2"></i>批量启用选中密钥
+                </button>
+                <button id="batchDisableBtn" class="w-full px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors">
+                    <i class="fas fa-toggle-off mr-2"></i>批量禁用选中密钥
+                </button>
+                <button id="batchCheckBalanceBtn" class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-dollar-sign mr-2"></i>批量检查余额
+                </button>
+                <button id="batchDeleteBtn" class="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors">
+                    <i class="fas fa-trash mr-2"></i>批量删除选中密钥
+                </button>
+                <button id="cleanZeroBalanceBtn" class="w-full px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors">
+                    <i class="fas fa-trash-alt mr-2"></i>清理零余额密钥
+                </button>
+            </div>
+            <div class="mt-4 flex justify-end">
+                <button id="cancelBatchOperations" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors">
+                    取消
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 安全设置模态框 -->
+    <div id="securityModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-lg mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold">🛡️ 安全设置</h3>
+                <button id="closeSecurityModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <!-- IP白名单设置 -->
+                <div class="border rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h4 class="font-medium">IP白名单</h4>
+                            <p class="text-sm text-gray-600">启用后只允许白名单中的IP访问</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="whitelistToggle" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div id="whitelistSettings" class="hidden">
+                        <textarea id="whitelistIPs" rows="4" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm" placeholder="输入IP地址，每行一个：&#10;192.168.1.100&#10;10.0.0.50"></textarea>
+                        <p class="text-xs text-gray-500 mt-1">当前白名单大小: <span id="whitelistCount">0</span></p>
+                    </div>
+                </div>
+
+                <!-- API限流设置 -->
+                <div class="border rounded-lg p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h4 class="font-medium">API限流</h4>
+                            <p class="text-sm text-gray-600">限制每个IP的请求频率</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="rateLimitToggle" class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                    <div id="rateLimitSettings" class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">每小时请求限制 (客户端IP)</label>
+                            <input type="number" id="rateLimitPerHour" value="1000" min="1" max="10000" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                            <p class="text-xs text-gray-500 mt-1">限制每个客户端IP每小时的请求次数</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">封禁时长 (分钟)</label>
+                            <input type="number" id="banDuration" value="10" min="1" max="1440" class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm">
+                            <p class="text-xs text-gray-500 mt-1">超过限制后的临时封禁时长</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end space-x-2">
+                <button id="cancelSecuritySettings" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                    取消
+                </button>
+                <button id="saveSecuritySettings" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    保存设置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 零余额清理确认模态框 -->
+    <div id="zeroBalanceModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-red-600">⚠️ 零余额密钥清理</h3>
+                <button id="closeZeroBalanceModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div id="zeroBalanceList" class="mb-4 max-h-60 overflow-y-auto">
+                <!-- 零余额密钥列表 -->
+            </div>
+            <p class="text-sm text-gray-600 mb-4">
+                确定要删除这些零余额密钥吗？此操作不可撤销。
+            </p>
+            <div class="flex justify-end space-x-2">
+                <button id="cancelZeroBalanceClean" class="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400">
+                    取消
+                </button>
+                <button id="confirmZeroBalanceClean" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+                    确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let authKey = '';
+        let isDarkMode = false;
+        let requestChart = null;
+        let keyStatusChart = null;
+
+        // WebSocket连接
+        let websocket = null;
+        let timeRangeUpdateInterval = null;
+
+        function initWebSocket() {
+            if (!authKey) return;
+
+            try {
+                const wsUrl = `ws://localhost:8700/ws/admin?token=${authKey}`;
+                websocket = new WebSocket(wsUrl);
+
+                websocket.onopen = function() {
+                    console.log('WebSocket连接已建立');
+                    showNotification('实时数据连接已建立', 'success');
+
+                    // 启动时间范围选项的定期更新 (每5分钟检查一次)
+                    if (timeRangeUpdateInterval) {
+                        clearInterval(timeRangeUpdateInterval);
+                    }
+                    timeRangeUpdateInterval = setInterval(async () => {
+                        console.log('定期更新时间范围选项...');
+                        await setupTimeRangeOptions();
+                    }, 5 * 60 * 1000); // 5分钟
+                };
+
+                websocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                };
+
+                websocket.onclose = function() {
+                    console.log('WebSocket连接已关闭');
+
+                    // 清除定时器
+                    if (timeRangeUpdateInterval) {
+                        clearInterval(timeRangeUpdateInterval);
+                        timeRangeUpdateInterval = null;
+                    }
+
+                    // 5秒后重连
+                    setTimeout(initWebSocket, 5000);
+                };
+
+                websocket.onerror = function(error) {
+                    console.error('WebSocket错误:', error);
+                };
+            } catch (error) {
+                console.error('WebSocket初始化失败:', error);
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'stats_update':
+                    updateStatsDisplay(data.data);
+                    break;
+                case 'key_status_change':
+                    loadKeys(); // 重新加载密钥列表
+                    break;
+                case 'alert':
+                    showNotification(data.message, data.level || 'warning');
+                    break;
+                case 'system_event':
+                    console.log('系统事件:', data.message);
+                    break;
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+                type === 'success' ? 'bg-green-500 text-white' :
+                type === 'error' ? 'bg-red-500 text-white' :
+                type === 'warning' ? 'bg-yellow-500 text-black' :
+                'bg-blue-500 text-white'
+            }`;
+            notification.textContent = message;
+
+            document.body.appendChild(notification);
+
+            // 3秒后自动消失
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeEventListeners();
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+
+            // 检查本地存储的认证密钥
+            const savedAuthKey = localStorage.getItem('authKey');
+            if (savedAuthKey) {
+                document.getElementById('authKey').value = savedAuthKey;
+                authenticate();
+            }
+
+            // 设置定时刷新（每30秒刷新一次数据）
+            setInterval(() => {
+                if (authKey && document.getElementById('authSection').classList.contains('hidden')) {
+                    refreshData();
+                }
+            }, 30000);
+        });
+
+        // 事件监听器
+        function initializeEventListeners() {
+            document.getElementById('authBtn').addEventListener('click', authenticate);
+            document.getElementById('authKey').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') authenticate();
+            });
+            document.getElementById('darkModeToggle').addEventListener('click', toggleDarkMode);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('addKeysBtn').addEventListener('click', showAddKeysModal);
+            document.getElementById('checkBalancesBtn').addEventListener('click', checkBalances);
+            document.getElementById('batchOperationsBtn').addEventListener('click', showBatchOperationsModal);
+            document.getElementById('exportKeysBtn').addEventListener('click', exportKeys);
+            document.getElementById('debugDataBtn').addEventListener('click', debugData);
+            document.getElementById('closeAddKeysModal').addEventListener('click', hideAddKeysModal);
+            document.getElementById('cancelAddKeys').addEventListener('click', hideAddKeysModal);
+            document.getElementById('confirmAddKeys').addEventListener('click', addKeys);
+            document.getElementById('closeBatchModal').addEventListener('click', hideBatchOperationsModal);
+            document.getElementById('cancelBatchOperations').addEventListener('click', hideBatchOperationsModal);
+            document.getElementById('selectAllKeys').addEventListener('change', toggleSelectAll);
+            document.getElementById('batchEnableBtn').addEventListener('click', () => batchToggleKeys(true));
+            document.getElementById('batchDisableBtn').addEventListener('click', () => batchToggleKeys(false));
+            document.getElementById('batchCheckBalanceBtn').addEventListener('click', batchCheckBalance);
+            document.getElementById('batchDeleteBtn').addEventListener('click', batchDeleteKeys);
+
+            // 筛选功能事件监听
+            document.getElementById('statusFilter').addEventListener('change', applyFilters);
+            document.getElementById('balanceFilter').addEventListener('change', applyFilters);
+            document.getElementById('searchFilter').addEventListener('input', applyFilters);
+            document.getElementById('clearFilters').addEventListener('click', clearFilters);
+
+            // 安全设置事件监听
+            document.getElementById('securitySettingsBtn').addEventListener('click', showSecurityModal);
+            document.getElementById('closeSecurityModal').addEventListener('click', hideSecurityModal);
+            document.getElementById('cancelSecuritySettings').addEventListener('click', hideSecurityModal);
+            document.getElementById('saveSecuritySettings').addEventListener('click', saveSecuritySettings);
+            document.getElementById('whitelistToggle').addEventListener('change', toggleWhitelistSettings);
+            document.getElementById('rateLimitToggle').addEventListener('change', toggleRateLimitSettings);
+
+            // 零余额清理事件监听
+            document.getElementById('cleanZeroBalanceBtn').addEventListener('click', showZeroBalanceModal);
+            document.getElementById('closeZeroBalanceModal').addEventListener('click', hideZeroBalanceModal);
+            document.getElementById('cancelZeroBalanceClean').addEventListener('click', hideZeroBalanceModal);
+            document.getElementById('confirmZeroBalanceClean').addEventListener('click', confirmZeroBalanceClean);
+        }
+
+        // 认证
+        async function authenticate() {
+            const keyInput = document.getElementById('authKey');
+            authKey = keyInput.value.trim();
+            
+            if (!authKey) {
+                alert('请输入认证密钥');
+                return;
+            }
+
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/admin/stats', {
+                    headers: {
+                        'Authorization': `Bearer ${authKey}`
+                    }
+                });
+
+                if (response.ok) {
+                    console.log('✅ 认证成功，保存密钥并加载数据');
+                    localStorage.setItem('authKey', authKey);
+                    document.getElementById('authSection').classList.add('hidden');
+                    document.getElementById('dashboardContent').classList.remove('hidden');
+                    await loadDashboardData();
+                    console.log('✅ 认证流程完成');
+                } else {
+                    console.error('❌ 认证失败:', response.status);
+                    alert('认证失败，请检查密钥是否正确');
+                }
+            } catch (error) {
+                alert('认证请求失败: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 加载仪表板数据
+        async function loadDashboardData() {
+            console.log('🔄 loadDashboardData被调用, authKey:', authKey ? '已设置' : '未设置');
+            showLoading(true);
+
+            try {
+                await Promise.all([
+                    loadStats(),
+                    loadKeys(),
+                    loadCharts()
+                ]);
+                console.log('✅ 所有数据加载完成');
+            } catch (error) {
+                console.error('❌ 加载数据失败:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 加载统计数据
+        async function loadStats() {
+            try {
+                const response = await fetch('/admin/stats', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+                
+                if (response.ok) {
+                    const stats = await response.json();
+                    updateStatsDisplay(stats);
+                }
+            } catch (error) {
+                console.error('加载统计数据失败:', error);
+            }
+        }
+
+        // 更新统计显示
+        async function updateStatsDisplay(stats) {
+            try {
+                // 获取增强统计数据
+                const response = await fetch('/admin/stats/enhanced', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                let enhancedStats = {};
+                if (response.ok) {
+                    enhancedStats = await response.json();
+                }
+
+                const basic = enhancedStats.basic || stats;
+                const performance = enhancedStats.performance || {};
+
+                // 更新顶部卡片 - 使用正确的数据源
+                const performanceData = enhancedStats.performance || {};
+                const usageData = basic.usage || {};
+
+                // 使用performance数据作为主要显示，usage数据作为补充
+                const totalRequests = performanceData.total_requests || 0;
+                const successfulRequests = performanceData.successful_requests || 0;
+                const failedRequests = performanceData.failed_requests || 0;
+                const activeKeys = basic.keys?.active || stats.keys?.active || 0;
+
+                // 更新当前会话请求数 (Performance数据) - 添加安全检查
+                const sessionRequestsElement = document.getElementById('sessionRequests');
+                if (sessionRequestsElement) {
+                    sessionRequestsElement.textContent = totalRequests;
+                }
+
+                const uptimeSeconds = enhancedStats.system?.uptime || 0;
+                const uptimeHours = (uptimeSeconds / 3600).toFixed(1);
+                const sessionRequestsDetailElement = document.getElementById('sessionRequestsDetail');
+                if (sessionRequestsDetailElement) {
+                    sessionRequestsDetailElement.textContent = `运行${uptimeHours}小时`;
+                }
+
+                // 更新历史总请求数 (Usage数据) - 添加安全检查
+                const historyTotal = usageData.total_requests || 0;
+                const totalHistoryRequestsElement = document.getElementById('totalHistoryRequests');
+                if (totalHistoryRequestsElement) {
+                    totalHistoryRequestsElement.textContent = historyTotal;
+                }
+
+                const lastSaved = usageData.last_saved_at || '';
+                const savedDate = lastSaved ? new Date(lastSaved).toLocaleDateString() : '未知';
+                const totalHistoryDetailElement = document.getElementById('totalHistoryDetail');
+                if (totalHistoryDetailElement) {
+                    totalHistoryDetailElement.textContent = `最后保存: ${savedDate}`;
+                }
+
+                // 更新成功率 (基于当前会话) - 添加安全检查
+                const successRate = totalRequests > 0 ?
+                    ((successfulRequests / totalRequests) * 100).toFixed(1) : '0.0';
+                const successRateElement = document.getElementById('successRate');
+                if (successRateElement) {
+                    successRateElement.textContent = successRate + '%';
+                }
+
+                const successRateDetailElement = document.getElementById('successRateDetail');
+                if (successRateDetailElement) {
+                    successRateDetailElement.textContent = `${successfulRequests}/${totalRequests} 会话成功`;
+                }
+
+                const activeKeysElement = document.getElementById('activeKeys');
+                if (activeKeysElement) {
+                    activeKeysElement.textContent = activeKeys;
+                }
+
+                // 添加数据验证日志
+                console.log('数据更新验证:', {
+                    sessionRequests: totalRequests,
+                    historyRequests: historyTotal,
+                    successRate: successRate,
+                    uptime: uptimeHours,
+                    activeKeys: activeKeys
+                });
+
+                const avgResponseTime = performanceData.avg_response_time ?
+                    `${(performanceData.avg_response_time * 1000).toFixed(0)}ms` : '< 100ms';
+                const avgResponseTimeElement = document.getElementById('avgResponseTime');
+                if (avgResponseTimeElement) {
+                    avgResponseTimeElement.textContent = avgResponseTime;
+                } else {
+                    console.warn('⚠️ avgResponseTime元素不存在，跳过更新');
+                }
+
+                // 更新详细请求信息
+                updateDetailedRequestInfo(performanceData, usageData, basic);
+
+                // 更新性能指标 - 传递已获取的数据
+                await updatePerformanceMetrics(enhancedStats);
+
+                // 更新安全统计
+                await updateSecurityStats(enhancedStats);
+
+                // 更新实时状态
+                await updateRealTimeStatus(enhancedStats);
+            } catch (error) {
+                console.error('Error updating stats display:', error);
+                // 回退到基础数据 - 但不要覆盖已经正确设置的值
+                console.log('使用回退数据，但保持已设置的正确值');
+                // 注释掉这些覆盖操作，因为上面已经设置了正确的值
+                // const fallbackPerfData = stats.performance || {};
+                // document.getElementById('totalRequests').textContent = fallbackPerfData.total_requests || stats.requests?.total || stats.total_requests || 0;
+                // document.getElementById('successRate').textContent =
+                //     ((fallbackPerfData.successful_requests || stats.requests?.successful || 0) / Math.max(fallbackPerfData.total_requests || stats.requests?.total || 1, 1) * 100).toFixed(1) + '%';
+                // document.getElementById('activeKeys').textContent = stats.keys?.active || 0;
+                // document.getElementById('avgResponseTime').textContent = '< 100ms';
+
+                // 更新其他模块（使用基础数据）
+                await updatePerformanceMetrics(stats);
+                await updateSecurityStats(stats);
+                await updateRealTimeStatus(stats);
+            }
+        }
+
+        // 更新性能指标
+        async function updatePerformanceMetrics(enhancedStats) {
+            const container = document.getElementById('performanceMetrics');
+            if (!container) return;
+
+            try {
+                // 使用传入的数据，不重新获取
+                const basic = enhancedStats.basic || {};
+                const performanceData = enhancedStats.performance || {};
+                const system = enhancedStats.system || {};
+
+                const metrics = [
+                    {
+                        label: '总请求数',
+                        value: performanceData.total_requests || basic.requests?.total || basic.total_requests || 0,
+                        icon: '📊'
+                    },
+                    {
+                        label: '成功请求',
+                        value: performanceData.successful_requests || basic.requests?.successful || basic.successful_requests || 0,
+                        icon: '✅'
+                    },
+                    {
+                        label: '失败请求',
+                        value: performanceData.failed_requests || basic.requests?.failed || basic.failed_requests || 0,
+                        icon: '❌'
+                    },
+                    {
+                        label: '平均响应时间',
+                        value: performanceData.avg_response_time ? `${performanceData.avg_response_time.toFixed(2)}s` : '< 1s',
+                        icon: '⚡'
+                    },
+                    {
+                        label: '成功率',
+                        value: performanceData.success_rate ? `${performanceData.success_rate.toFixed(1)}%` : '0%',
+                        icon: '📈'
+                    },
+                    {
+                        label: '运行时间',
+                        value: system.uptime ? formatUptime(Math.floor(system.uptime)) : '未知',
+                        icon: '⏱️'
+                    }
+                ];
+
+                container.innerHTML = metrics.map(metric => `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${metric.icon} ${metric.label}</span>
+                        <span class="font-semibold text-blue-600">${metric.value}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error updating performance metrics:', error);
+                // 回退到基础数据
+                const fallbackPerformanceData = stats.performance || {};
+                const metrics = [
+                    { label: '总请求数', value: fallbackPerformanceData.total_requests || stats.requests?.total || stats.total_requests || 0, icon: '📊' },
+                    { label: '成功请求', value: fallbackPerformanceData.successful_requests || stats.requests?.successful || stats.successful_requests || 0, icon: '✅' },
+                    { label: '失败请求', value: fallbackPerformanceData.failed_requests || stats.requests?.failed || stats.failed_requests || 0, icon: '❌' },
+                    { label: '平均响应时间', value: '< 1s', icon: '⚡' },
+                    { label: '成功率', value: '99%', icon: '📈' },
+                    { label: '运行时间', value: '运行中', icon: '⏱️' }
+                ];
+
+                container.innerHTML = metrics.map(metric => `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${metric.icon} ${metric.label}</span>
+                        <span class="font-semibold text-blue-600">${metric.value}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 更新安全统计
+        async function updateSecurityStats(stats) {
+            const container = document.getElementById('securityStats');
+            if (!container) return;
+
+            try {
+                // 获取专门的安全统计数据
+                let securityStats = {};
+                try {
+                    const securityResponse = await fetch('/admin/security/stats', {
+                        headers: { 'Authorization': `Bearer ${authKey}` }
+                    });
+                    if (securityResponse.ok) {
+                        const securityData = await securityResponse.json();
+                        securityStats = securityData.security_stats || {};
+                        console.log('🛡️ 安全统计数据获取成功:', securityStats);
+                    } else {
+                        console.warn('⚠️ 安全统计API调用失败，使用回退数据');
+                        securityStats = stats.security || {};
+                    }
+                } catch (error) {
+                    console.warn('⚠️ 安全统计API异常，使用回退数据:', error);
+                    securityStats = stats.security || {};
+                }
+
+                const performanceData = stats.performance || {};
+                const usageData = stats.basic?.usage || {};
+
+                const securityData = [
+                    {
+                        label: '最近请求数',
+                        value: usageData.total_requests || performanceData.total_requests || 0,
+                        icon: '🛡️'
+                    },
+                    {
+                        label: '被阻止IP',
+                        value: securityStats.blocked_ips?.length || 0,
+                        icon: '🚫'
+                    },
+                    {
+                        label: '活跃IP数',
+                        value: securityStats.active_ips?.length || 0,
+                        icon: '🌐'
+                    },
+                    {
+                        label: '白名单大小',
+                        value: securityStats.whitelist_size || 0,
+                        icon: '✅'
+                    },
+                    {
+                        label: '白名单状态',
+                        value: securityStats.whitelist_enabled ? '启用' : '禁用',
+                        icon: '⚙️'
+                    },
+                    {
+                        label: '限流状态',
+                        value: securityStats.rate_limit_enabled ? '启用' : '禁用',
+                        icon: '🔒'
+                    }
+                ];
+
+                container.innerHTML = securityData.map(item => `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${item.icon} ${item.label}</span>
+                        <span class="font-semibold text-green-600">${item.value}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error updating security stats:', error);
+                // 回退到基础数据
+                const securityData = [
+                    { label: '安全检查次数', value: stats.security?.checks || 0, icon: '🛡️' },
+                    { label: '拦截请求', value: stats.security?.blocked || 0, icon: '🚫' },
+                    { label: '白名单IP', value: stats.security?.whitelist || 0, icon: '✅' },
+                    { label: '黑名单IP', value: stats.security?.blacklist || 0, icon: '⛔' },
+                    { label: '异常检测', value: stats.security?.anomalies || 0, icon: '⚠️' },
+                    { label: '安全等级', value: '高', icon: '🔒' }
+                ];
+
+                container.innerHTML = securityData.map(item => `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${item.icon} ${item.label}</span>
+                        <span class="font-semibold text-green-600">${item.value}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 更新详细请求信息
+        function updateDetailedRequestInfo(performanceData, usageData, basic) {
+            try {
+                console.log('🔍 updateDetailedRequestInfo被调用:', {
+                    performanceData,
+                    usageData,
+                    basic
+                });
+
+                // 当前会话统计
+                const sessionTotal = performanceData.total_requests || 0;
+                const sessionSuccess = performanceData.successful_requests || 0;
+                const sessionFailed = performanceData.failed_requests || 0;
+                const sessionRate = performanceData.success_rate ? `${performanceData.success_rate.toFixed(1)}%` : '0%';
+
+                console.log('📊 设置当前会话统计:', {
+                    sessionTotal,
+                    sessionSuccess,
+                    sessionFailed,
+                    sessionRate
+                });
+
+                // 安全更新DOM元素
+                const sessionTotalElement = document.getElementById('sessionTotal');
+                if (sessionTotalElement) sessionTotalElement.textContent = sessionTotal;
+
+                const sessionSuccessElement = document.getElementById('sessionSuccess');
+                if (sessionSuccessElement) sessionSuccessElement.textContent = sessionSuccess;
+
+                const sessionFailedElement = document.getElementById('sessionFailed');
+                if (sessionFailedElement) sessionFailedElement.textContent = sessionFailed;
+
+                const sessionRateElement = document.getElementById('sessionRate');
+                if (sessionRateElement) sessionRateElement.textContent = sessionRate;
+
+                // 历史累计统计
+                const historyTotal = usageData.total_requests || 0;
+                const historyTokens = usageData.total_tokens ? usageData.total_tokens.toLocaleString() : 0;
+                const historyCost = usageData.estimated_cost ? `$${usageData.estimated_cost.toFixed(4)}` : '$0.0000';
+                const lastUpdate = usageData.last_saved_at ? new Date(usageData.last_saved_at).toLocaleTimeString() : '未知';
+
+                console.log('📚 设置历史累计统计:', {
+                    historyTotal,
+                    historyTokens,
+                    historyCost,
+                    lastUpdate
+                });
+
+                // 安全更新历史统计DOM元素
+                const historyTotalElement = document.getElementById('historyTotal');
+                if (historyTotalElement) historyTotalElement.textContent = historyTotal;
+
+                const historyTokensElement = document.getElementById('historyTokens');
+                if (historyTokensElement) historyTokensElement.textContent = historyTokens;
+
+                const historyCostElement = document.getElementById('historyCost');
+                if (historyCostElement) historyCostElement.textContent = historyCost;
+
+                const lastUpdateElement = document.getElementById('lastUpdate');
+                if (lastUpdateElement) lastUpdateElement.textContent = lastUpdate;
+
+                // 模型使用分布
+                const modelStats = document.getElementById('modelStats');
+                if (usageData.requests_by_model) {
+                    const modelHtml = Object.entries(usageData.requests_by_model)
+                        .sort(([,a], [,b]) => b - a)
+                        .slice(0, 4)
+                        .map(([model, count]) => {
+                            const shortModel = model.split('/').pop() || model;
+                            return `<div>${shortModel}: ${count}</div>`;
+                        }).join('');
+                    modelStats.innerHTML = modelHtml || '<div>暂无数据</div>';
+                } else {
+                    modelStats.innerHTML = '<div>暂无数据</div>';
+                }
+
+                // 时间分布
+                const timeStats = document.getElementById('timeStats');
+                if (usageData.requests_by_hour) {
+                    const timeHtml = Object.entries(usageData.requests_by_hour)
+                        .sort(([a], [b]) => parseInt(b) - parseInt(a))
+                        .slice(0, 4)
+                        .map(([hour, count]) => `<div>${hour}时: ${count}次</div>`)
+                        .join('');
+                    timeStats.innerHTML = timeHtml || '<div>暂无数据</div>';
+                } else {
+                    timeStats.innerHTML = '<div>暂无数据</div>';
+                }
+            } catch (error) {
+                console.error('❌ 更新详细请求信息失败:', error);
+                console.error('错误详情:', {
+                    message: error.message,
+                    stack: error.stack,
+                    performanceData,
+                    usageData,
+                    basic
+                });
+            }
+        }
+
+        // 更新实时状态
+        async function updateRealTimeStatus(stats) {
+            const container = document.getElementById('realTimeStatus');
+            if (!container) return;
+
+            try {
+                // 使用传入的stats数据，避免重复API调用
+                const enhancedStats = stats;
+                const healthData = {
+                    status: 'healthy',  // 默认健康状态
+                    uptime: enhancedStats.system?.uptime || 0,
+                    active_keys: enhancedStats.keys?.active || 0,
+                    total_keys: enhancedStats.keys?.total || 0,
+                    statistics: {
+                        total_requests: enhancedStats.performance?.total_requests || 0,
+                        failed_requests: enhancedStats.performance?.failed_requests || 0
+                    }
+                };
+
+                const now = new Date();
+                const uptime = healthData.uptime || enhancedStats.system?.uptime || 0;
+                const totalRequests = healthData.statistics?.total_requests || stats.requests?.total || 0;
+                const failedRequests = healthData.statistics?.failed_requests || stats.requests?.failed || 0;
+                const errorRate = totalRequests > 0 ? ((failedRequests / totalRequests) * 100).toFixed(1) : '0.0';
+
+                const statusData = [
+                    {
+                        label: '服务状态',
+                        value: healthData.status === 'healthy' ? '健康' : '异常',
+                        icon: healthData.status === 'healthy' ? '🟢' : '🔴',
+                        color: healthData.status === 'healthy' ? 'text-green-600' : 'text-red-600'
+                    },
+                    {
+                        label: '运行时间',
+                        value: formatUptime(Math.floor(uptime)),
+                        icon: '⏱️',
+                        color: 'text-blue-600'
+                    },
+                    {
+                        label: '活跃密钥',
+                        value: healthData.active_keys || stats.keys?.active || 0,
+                        icon: '🔑',
+                        color: 'text-purple-600'
+                    },
+                    {
+                        label: '总密钥数',
+                        value: healthData.total_keys || stats.keys?.total || 0,
+                        icon: '📊',
+                        color: 'text-orange-600'
+                    },
+                    {
+                        label: '错误率',
+                        value: `${errorRate}%`,
+                        icon: '📉',
+                        color: parseFloat(errorRate) > 5 ? 'text-red-600' : 'text-green-600'
+                    },
+                    {
+                        label: '最后更新',
+                        value: now.toLocaleTimeString('zh-CN'),
+                        icon: '🔄',
+                        color: 'text-gray-600'
+                    }
+                ];
+
+                container.innerHTML = statusData.map(item => `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${item.icon} ${item.label}</span>
+                        <span class="font-semibold ${item.color}">${item.value}</span>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error updating real-time status:', error);
+                // 回退到基础数据
+                const now = new Date();
+                const statusData = [
+                    { label: '服务状态', value: '运行中', icon: '🟢', color: 'text-green-600' },
+                    { label: '运行时间', value: '运行中', icon: '⏱️', color: 'text-blue-600' },
+                    { label: '活跃连接', value: stats.connections?.active || 0, icon: '🔗', color: 'text-purple-600' },
+                    { label: '队列长度', value: stats.queue?.length || 0, icon: '📋', color: 'text-orange-600' },
+                    { label: '错误率', value: '0.1%', icon: '📉', color: 'text-red-600' },
+                    { label: '最后更新', value: now.toLocaleTimeString('zh-CN'), icon: '🔄', color: 'text-gray-600' }
+                ];
+
+                container.innerHTML = statusData.map(item => `
+                    <div class="flex justify-between items-center py-1">
+                        <span class="text-sm text-gray-600">${item.icon} ${item.label}</span>
+                        <span class="font-semibold ${item.color}">${item.value}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 格式化运行时间
+        function formatUptime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${hours}h ${minutes}m ${secs}s`;
+        }
+
+        // 工具函数
+        function updateCurrentTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleString('zh-CN');
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+        }
+
+        function toggleDarkMode() {
+            isDarkMode = !isDarkMode;
+            document.body.classList.toggle('dark-mode', isDarkMode);
+            const icon = document.querySelector('#darkModeToggle i');
+            icon.className = isDarkMode ? 'fas fa-sun' : 'fas fa-moon';
+        }
+
+        async function refreshData() {
+            if (authKey) {
+                await loadDashboardData();
+            }
+        }
+
+        async function checkBalances() {
+            showLoading(true);
+            try {
+                const response = await fetch('/admin/keys/check-balances', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+                
+                if (response.ok) {
+                    alert('余额检查完成');
+                    await loadKeys();
+                }
+            } catch (error) {
+                alert('余额检查失败: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 显示添加密钥模态框
+        function showAddKeysModal() {
+            document.getElementById('addKeysModal').classList.remove('hidden');
+            document.getElementById('addKeysModal').classList.add('flex');
+        }
+
+        // 隐藏添加密钥模态框
+        function hideAddKeysModal() {
+            document.getElementById('addKeysModal').classList.add('hidden');
+            document.getElementById('addKeysModal').classList.remove('flex');
+            document.getElementById('keysTextarea').value = '';
+            document.getElementById('rpmLimit').value = '100';
+        }
+
+        // 添加密钥
+        async function addKeys() {
+            const keysText = document.getElementById('keysTextarea').value.trim();
+            const rpmLimit = parseInt(document.getElementById('rpmLimit').value);
+
+            if (!keysText) {
+                alert('请输入至少一个API密钥');
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch('/admin/keys/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authKey}`
+                    },
+                    body: JSON.stringify({
+                        keys_text: keysText,
+                        rpm_limit: rpmLimit
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    const { added, duplicates, invalids } = result.result;
+                    let message = `添加完成！\n`;
+                    if (added.length > 0) message += `✅ 成功添加: ${added.length}个密钥\n`;
+                    if (duplicates.length > 0) message += `⚠️ 重复密钥: ${duplicates.length}个\n`;
+                    if (invalids.length > 0) message += `❌ 无效密钥: ${invalids.length}个\n`;
+
+                    alert(message);
+                    hideAddKeysModal();
+                    await loadDashboardData(); // 刷新页面数据
+                } else {
+                    alert('添加失败: ' + (result.message || '未知错误'));
+                }
+            } catch (error) {
+                console.error('添加密钥失败:', error);
+                alert('添加失败，请检查网络连接');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 显示批量操作模态框
+        function showBatchOperationsModal() {
+            const selectedKeys = getSelectedKeys();
+            if (selectedKeys.length === 0) {
+                alert('请先选择要操作的密钥');
+                return;
+            }
+            document.getElementById('batchOperationsModal').classList.remove('hidden');
+            document.getElementById('batchOperationsModal').classList.add('flex');
+        }
+
+        // 隐藏批量操作模态框
+        function hideBatchOperationsModal() {
+            document.getElementById('batchOperationsModal').classList.add('hidden');
+            document.getElementById('batchOperationsModal').classList.remove('flex');
+        }
+
+        // 全选/取消全选
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAllKeys');
+            const checkboxes = document.querySelectorAll('.key-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAll.checked;
+            });
+        }
+
+        // 获取选中的密钥
+        function getSelectedKeys() {
+            const checkboxes = document.querySelectorAll('.key-checkbox:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        }
+
+        // 批量启用/禁用密钥
+        async function batchToggleKeys(enable) {
+            const selectedKeys = getSelectedKeys();
+            if (selectedKeys.length === 0) {
+                alert('请选择要操作的密钥');
+                return;
+            }
+
+            const action = enable ? '启用' : '禁用';
+            if (!confirm(`确定要${action}选中的 ${selectedKeys.length} 个密钥吗？`)) {
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch('/admin/keys/batch/toggle', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authKey}`
+                    },
+                    body: JSON.stringify({
+                        key_ids: selectedKeys,
+                        enable: enable
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(`${action}操作完成！成功: ${result.successful.length}, 失败: ${result.failed.length}`);
+                    hideBatchOperationsModal();
+                    await loadDashboardData();
+                } else {
+                    alert(`${action}操作失败: ${result.message || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error(`批量${action}失败:`, error);
+                alert(`${action}操作失败，请检查网络连接`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 批量检查余额
+        async function batchCheckBalance() {
+            const selectedKeys = getSelectedKeys();
+            if (selectedKeys.length === 0) {
+                alert('请选择要检查的密钥');
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch('/admin/keys/batch/check-balance', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authKey}`
+                    },
+                    body: JSON.stringify({
+                        key_ids: selectedKeys
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(`余额检查完成！成功: ${result.successful.length}, 失败: ${result.failed.length}`);
+                    hideBatchOperationsModal();
+                    await loadDashboardData();
+                } else {
+                    alert(`余额检查失败: ${result.message || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error('批量余额检查失败:', error);
+                alert('余额检查失败，请检查网络连接');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 批量删除密钥
+        async function batchDeleteKeys() {
+            const selectedKeys = getSelectedKeys();
+            if (selectedKeys.length === 0) {
+                alert('请选择要删除的密钥');
+                return;
+            }
+
+            if (!confirm(`⚠️ 警告：确定要删除选中的 ${selectedKeys.length} 个密钥吗？此操作不可撤销！`)) {
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch('/admin/keys/batch/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authKey}`
+                    },
+                    body: JSON.stringify({
+                        key_ids: selectedKeys
+                    })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(`删除操作完成！成功: ${result.successful.length}, 失败: ${result.failed.length}`);
+                    hideBatchOperationsModal();
+                    await loadDashboardData();
+                } else {
+                    alert(`删除操作失败: ${result.message || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error('批量删除失败:', error);
+                alert('删除操作失败，请检查网络连接');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 全局变量存储原始密钥数据
+        let allKeysData = [];
+
+        // 筛选功能
+        function applyFilters() {
+            const statusFilter = document.getElementById('statusFilter').value;
+            const balanceFilter = document.getElementById('balanceFilter').value;
+            const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+
+            let filteredKeys = allKeysData.filter(key => {
+                // 状态筛选
+                if (statusFilter === 'active' && !key.is_active) return false;
+                if (statusFilter === 'inactive' && key.is_active) return false;
+
+                // 余额筛选
+                const balance = key.balance || 0;
+                if (balanceFilter === 'high' && balance <= 10) return false;
+                if (balanceFilter === 'medium' && (balance < 1 || balance > 10)) return false;
+                if (balanceFilter === 'low' && balance >= 1) return false;
+
+                // 搜索筛选
+                if (searchFilter && !key.id.toLowerCase().includes(searchFilter)) return false;
+
+                return true;
+            });
+
+            displayKeysTable(filteredKeys);
+            updateFilterCounts(filteredKeys.length, allKeysData.length);
+        }
+
+        function clearFilters() {
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('balanceFilter').value = '';
+            document.getElementById('searchFilter').value = '';
+            displayKeysTable(allKeysData);
+            updateFilterCounts(allKeysData.length, allKeysData.length);
+        }
+
+        function updateFilterCounts(filtered, total) {
+            document.getElementById('filteredCount').textContent = filtered;
+            document.getElementById('totalCount').textContent = total;
+        }
+
+        // 更新滚动提示
+        function updateScrollHint(keyCount) {
+            const scrollHint = document.getElementById('scrollHint');
+            if (!scrollHint) return;
+
+            // 如果密钥数量超过10个，显示滚动提示
+            if (keyCount > 10) {
+                scrollHint.classList.remove('hidden');
+
+                // 监听滚动事件，滚动后隐藏提示
+                const scrollContainer = scrollHint.previousElementSibling;
+                if (scrollContainer) {
+                    const hideHint = () => {
+                        scrollHint.classList.add('hidden');
+                        scrollContainer.removeEventListener('scroll', hideHint);
+                    };
+                    scrollContainer.addEventListener('scroll', hideHint, { once: true });
+                }
+            } else {
+                scrollHint.classList.add('hidden');
+            }
+        }
+
+        // 导出功能增强 - 使用专用导出API获取完整密钥
+        async function exportKeys() {
+            console.log('导出功能被调用');
+
+            try {
+                showLoading(true);
+
+                // 从专用导出API获取完整密钥数据
+                const response = await fetch('/admin/keys/export', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API请求失败: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const fullKeysData = data.keys || [];
+
+                console.log(`获取到 ${fullKeysData.length} 个完整密钥数据`);
+
+                if (fullKeysData.length === 0) {
+                    alert('没有数据可导出');
+                    return;
+                }
+
+                // 获取当前筛选条件
+                const statusFilter = document.getElementById('statusFilter').value;
+                const balanceFilter = document.getElementById('balanceFilter').value;
+                const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+
+                // 应用筛选条件
+                let exportData = fullKeysData;
+                if (statusFilter || balanceFilter || searchFilter) {
+                    exportData = fullKeysData.filter(key => {
+                        if (statusFilter === 'active' && !key.is_active) return false;
+                        if (statusFilter === 'inactive' && key.is_active) return false;
+
+                        const balance = key.balance || 0;
+                        if (balanceFilter === 'high' && balance <= 10) return false;
+                        if (balanceFilter === 'medium' && (balance < 1 || balance > 10)) return false;
+                        if (balanceFilter === 'low' && balance >= 1) return false;
+
+                        if (searchFilter && !key.id.toLowerCase().includes(searchFilter)) return false;
+
+                        return true;
+                    });
+                }
+
+                // 创建CSV数据 - 包含完整密钥
+                const csvHeader = 'ID,完整密钥,密钥预览,状态,余额,成功次数,错误次数,RPM限制,TPM限制,总使用Token,性能评分,平均响应时间,成功率,最后使用时间,创建时间\n';
+                const csvData = exportData.map(key => {
+                    // 格式化时间
+                    const formatTime = (timeStr) => {
+                        if (!timeStr || timeStr === 'Never' || timeStr === '从未使用') return '从未使用';
+                        try {
+                            return new Date(timeStr).toLocaleString('zh-CN');
+                        } catch (e) {
+                            return timeStr;
+                        }
+                    };
+
+                    return [
+                        `"${key.id || ''}"`,
+                        `"${key.key || ''}"`,  // 完整密钥
+                        `"${key.key_preview || ''}"`,
+                        `"${key.is_active ? '活跃' : '禁用'}"`,
+                        `"${(key.balance || 0).toFixed(4)}"`,
+                        `"${key.success_count || 0}"`,
+                        `"${key.error_count || 0}"`,
+                        `"${key.rpm_limit || 0}"`,
+                        `"${key.tpm_limit || 0}"`,
+                        `"${key.total_tokens_used || 0}"`,
+                        `"${(key.performance_score || 0).toFixed(3)}"`,
+                        `"${(key.avg_response_time || 0).toFixed(3)}s"`,
+                        `"${((key.success_rate || 0) * 100).toFixed(1)}%"`,
+                        `"${formatTime(key.last_used)}"`,
+                        `"${formatTime(key.created_at)}"`
+                    ].join(',');
+                }).join('\n');
+
+                const csvContent = csvHeader + csvData;
+
+                // 使用UTF-8 BOM确保中文正确显示
+                const BOM = '\uFEFF';
+                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `siliconflow_keys_complete_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+
+                URL.revokeObjectURL(url);
+                showNotification(`已导出 ${exportData.length} 个完整密钥数据`, 'success');
+                console.log(`导出完成，共 ${exportData.length} 条记录，包含完整密钥`);
+
+            } catch (error) {
+                console.error('导出失败:', error);
+                showNotification('导出失败: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 数据调试功能
+        function debugData() {
+            console.log('=== 数据调试信息 ===');
+            console.log('authKey:', authKey ? '已设置' : '未设置');
+            console.log('allKeysData长度:', allKeysData.length);
+
+            if (allKeysData.length > 0) {
+                console.log('第一个密钥数据结构:');
+                console.log(JSON.stringify(allKeysData[0], null, 2));
+
+                console.log('所有字段名:');
+                console.log(Object.keys(allKeysData[0]));
+            }
+
+            // 显示调试信息到页面
+            const debugInfo = {
+                authKey: authKey ? '已设置' : '未设置',
+                keysCount: allKeysData.length,
+                sampleData: allKeysData[0] || null,
+                apiEndpoints: [
+                    '/admin/keys',
+                    '/admin/stats',
+                    '/admin/stats/enhanced'
+                ]
+            };
+
+            alert(`调试信息已输出到控制台\n\n密钥数量: ${allKeysData.length}\n认证状态: ${authKey ? '已认证' : '未认证'}\n\n请按F12查看详细信息`);
+
+            // 测试API连接
+            testApiConnections();
+        }
+
+        // 测试API连接
+        async function testApiConnections() {
+            const endpoints = [
+                '/admin/stats',
+                '/admin/keys',
+                '/admin/stats/enhanced'
+            ];
+
+            console.log('=== API连接测试 ===');
+
+            for (const endpoint of endpoints) {
+                try {
+                    const response = await fetch(endpoint, {
+                        headers: { 'Authorization': `Bearer ${authKey}` }
+                    });
+
+                    console.log(`${endpoint}: ${response.status} ${response.statusText}`);
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`${endpoint} 数据结构:`, Object.keys(data));
+                    }
+                } catch (error) {
+                    console.error(`${endpoint} 错误:`, error);
+                }
+            }
+        }
+
+        // 安全设置功能
+        function showSecurityModal() {
+            loadSecuritySettings();
+            document.getElementById('securityModal').classList.remove('hidden');
+            document.getElementById('securityModal').classList.add('flex');
+        }
+
+        function hideSecurityModal() {
+            document.getElementById('securityModal').classList.add('hidden');
+            document.getElementById('securityModal').classList.remove('flex');
+        }
+
+        async function loadSecuritySettings() {
+            try {
+                const response = await fetch('/admin/security/stats', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const securityStats = data.security_stats || {};
+
+                    // 设置开关状态
+                    document.getElementById('whitelistToggle').checked = securityStats.whitelist_enabled || false;
+                    document.getElementById('rateLimitToggle').checked = securityStats.rate_limit_enabled !== false;
+
+                    // 显示/隐藏设置区域
+                    toggleWhitelistSettings();
+                    toggleRateLimitSettings();
+
+                    // 设置白名单IP
+                    const whitelistIPs = securityStats.whitelist_ips || [];
+                    document.getElementById('whitelistIPs').value = whitelistIPs.join('\\n');
+                    document.getElementById('whitelistCount').textContent = whitelistIPs.length;
+
+                    // 设置限流参数
+                    document.getElementById('rateLimitPerHour').value = securityStats.rate_limit_requests || 1000;
+                    document.getElementById('banDuration').value = securityStats.ban_duration_minutes || 10;
+                }
+            } catch (error) {
+                console.error('加载安全设置失败:', error);
+                showNotification('加载安全设置失败', 'error');
+            }
+        }
+
+        function toggleWhitelistSettings() {
+            const toggle = document.getElementById('whitelistToggle');
+            const settings = document.getElementById('whitelistSettings');
+
+            if (toggle.checked) {
+                settings.classList.remove('hidden');
+            } else {
+                settings.classList.add('hidden');
+            }
+        }
+
+        function toggleRateLimitSettings() {
+            const toggle = document.getElementById('rateLimitToggle');
+            const settings = document.getElementById('rateLimitSettings');
+
+            if (toggle.checked) {
+                settings.classList.remove('hidden');
+            } else {
+                settings.classList.add('hidden');
+            }
+        }
+
+        async function saveSecuritySettings() {
+            try {
+                const whitelistEnabled = document.getElementById('whitelistToggle').checked;
+                const rateLimitEnabled = document.getElementById('rateLimitToggle').checked;
+                const whitelistIPs = document.getElementById('whitelistIPs').value
+                    .split('\\n')
+                    .map(ip => ip.trim())
+                    .filter(ip => ip.length > 0);
+                const rateLimitPerHour = parseInt(document.getElementById('rateLimitPerHour').value);
+                const banDuration = parseInt(document.getElementById('banDuration').value);
+
+                const settings = {
+                    whitelist_enabled: whitelistEnabled,
+                    rate_limit_enabled: rateLimitEnabled,
+                    whitelist_ips: whitelistIPs,
+                    rate_limit_requests: rateLimitPerHour,
+                    rate_limit_window: 3600, // 1小时 = 3600秒
+                    ban_duration_minutes: banDuration
+                };
+
+                const response = await fetch('/admin/security/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.ok) {
+                    showNotification('安全设置已保存', 'success');
+                    hideSecurityModal();
+                    // 刷新安全统计
+                    await updateSecurityStats({});
+                } else {
+                    const error = await response.text();
+                    showNotification(`保存失败: ${error}`, 'error');
+                }
+            } catch (error) {
+                console.error('保存安全设置失败:', error);
+                showNotification('保存安全设置失败', 'error');
+            }
+        }
+
+        // 零余额清理功能
+        async function showZeroBalanceModal() {
+            try {
+                // 获取所有密钥数据
+                const response = await fetch('/admin/keys', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const keys = data.keys || [];
+
+                    // 筛选零余额密钥（余额为0.00且确认无误）
+                    const zeroBalanceKeys = keys.filter(key => {
+                        const balance = parseFloat(key.balance || 0);
+                        return balance === 0.00 && key.balance !== null && key.balance !== undefined;
+                    });
+
+                    if (zeroBalanceKeys.length === 0) {
+                        showNotification('没有找到零余额密钥', 'info');
+                        return;
+                    }
+
+                    // 显示零余额密钥列表
+                    const listContainer = document.getElementById('zeroBalanceList');
+                    listContainer.innerHTML = `
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                            <p class="text-sm font-medium text-yellow-800">找到 ${zeroBalanceKeys.length} 个零余额密钥:</p>
+                        </div>
+                        <div class="space-y-2 max-h-40 overflow-y-auto">
+                            ${zeroBalanceKeys.map(key => `
+                                <div class="flex justify-between items-center p-2 bg-gray-50 rounded text-sm">
+                                    <span class="font-mono">${key.id.substring(0, 12)}...</span>
+                                    <span class="text-red-600 font-semibold">$${(key.balance || 0).toFixed(2)}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+
+                    // 存储要删除的密钥ID
+                    window.zeroBalanceKeysToDelete = zeroBalanceKeys.map(key => key.id);
+
+                    // 显示模态框
+                    document.getElementById('zeroBalanceModal').classList.remove('hidden');
+                    document.getElementById('zeroBalanceModal').classList.add('flex');
+                } else {
+                    showNotification('获取密钥数据失败', 'error');
+                }
+            } catch (error) {
+                console.error('获取零余额密钥失败:', error);
+                showNotification('获取零余额密钥失败', 'error');
+            }
+        }
+
+        function hideZeroBalanceModal() {
+            document.getElementById('zeroBalanceModal').classList.add('hidden');
+            document.getElementById('zeroBalanceModal').classList.remove('flex');
+            window.zeroBalanceKeysToDelete = null;
+        }
+
+        async function confirmZeroBalanceClean() {
+            if (!window.zeroBalanceKeysToDelete || window.zeroBalanceKeysToDelete.length === 0) {
+                showNotification('没有要删除的密钥', 'warning');
+                return;
+            }
+
+            try {
+                showLoading(true);
+                let successCount = 0;
+                let failCount = 0;
+
+                // 批量删除零余额密钥
+                for (const keyId of window.zeroBalanceKeysToDelete) {
+                    try {
+                        const response = await fetch(`/admin/keys/${keyId}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${authKey}` }
+                        });
+
+                        if (response.ok) {
+                            successCount++;
+                        } else {
+                            failCount++;
+                            console.error(`删除密钥 ${keyId} 失败:`, await response.text());
+                        }
+                    } catch (error) {
+                        failCount++;
+                        console.error(`删除密钥 ${keyId} 错误:`, error);
+                    }
+                }
+
+                // 显示结果
+                if (successCount > 0) {
+                    showNotification(`成功删除 ${successCount} 个零余额密钥${failCount > 0 ? `，${failCount} 个失败` : ''}`,
+                        failCount > 0 ? 'warning' : 'success');
+
+                    // 刷新密钥列表
+                    await loadKeys();
+                } else {
+                    showNotification('删除失败', 'error');
+                }
+
+                hideZeroBalanceModal();
+            } catch (error) {
+                console.error('批量删除零余额密钥失败:', error);
+                showNotification('批量删除失败', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 加载密钥数据
+        async function loadKeys() {
+            try {
+                console.log('开始加载密钥数据...');
+                const response = await fetch('/admin/keys', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('API返回的数据结构:', data);
+
+                    allKeysData = data.keys || [];
+                    console.log(`成功加载 ${allKeysData.length} 个密钥`);
+
+                    if (allKeysData.length > 0) {
+                        console.log('第一个密钥的数据结构:', allKeysData[0]);
+                    }
+
+                    displayKeysTable(allKeysData);
+
+                    // 初始化WebSocket连接（如果还没有连接）
+                    if (!websocket || websocket.readyState === WebSocket.CLOSED) {
+                        initWebSocket();
+                    }
+                } else {
+                    console.error('API请求失败:', response.status, response.statusText);
+                    const errorText = await response.text();
+                    console.error('错误详情:', errorText);
+                    showNotification(`加载密钥数据失败: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                console.error('加载密钥数据失败:', error);
+                showNotification('网络错误，无法加载密钥数据', 'error');
+            }
+        }
+
+        // 显示密钥表格
+        function displayKeysTable(keys) {
+            const tableBody = document.getElementById('keysTableBody');
+
+            if (!tableBody) {
+                console.error('找不到密钥表格容器');
+                return;
+            }
+
+            if (!keys || keys.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">暂无密钥数据</td></tr>';
+                updateFilterCounts(0, allKeysData.length);
+                return;
+            }
+
+            console.log(`显示 ${keys.length} 个密钥`);
+            console.log('表格数据示例:', keys[0]);
+
+            tableBody.innerHTML = keys.map(key => `
+                <tr class="table-row-hover transition-all duration-200 ${getRowHighlight(key)}">
+                    <td class="px-4 py-3">
+                        <input type="checkbox" class="key-checkbox rounded" value="${key.id}">
+                    </td>
+                    <td class="px-4 py-3 font-mono text-sm" title="${key.id}">${key.id.substring(0, 12)}...</td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 text-xs rounded-full ${key.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${key.is_active ? '✅ 活跃' : '❌ 禁用'}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="font-semibold ${getBalanceColor(key.balance || 0)}">
+                            $${(key.balance || 0).toFixed(2)}
+                        </span>
+                        ${getBalanceWarning(key.balance || 0)}
+                    </td>
+                    <td class="px-4 py-3">${key.usage_count || 0}</td>
+                    <td class="px-4 py-3 text-sm text-gray-500">${formatLastUsed(key.last_used)}</td>
+                    <td class="px-4 py-3">
+                        <div class="flex space-x-1">
+                            <button onclick="toggleSingleKey('${key.id}', ${!key.is_active})"
+                                    class="px-2 py-1 text-xs rounded ${key.is_active ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}">
+                                ${key.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button onclick="deleteSingleKey('${key.id}')"
+                                    class="px-2 py-1 text-xs bg-red-100 text-red-800 rounded hover:bg-red-200">
+                                删除
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            // 更新筛选计数
+            updateFilterCounts(keys.length, allKeysData.length);
+
+            // 更新总密钥数显示
+            const totalKeysCount = document.getElementById('totalKeysCount');
+            if (totalKeysCount) {
+                totalKeysCount.textContent = keys.length;
+            }
+
+            // 显示/隐藏滚动提示
+            updateScrollHint(keys.length);
+        }
+
+        // 辅助函数
+        function getRowHighlight(key) {
+            if (!key.is_active) return 'bg-red-50';
+            if ((key.balance || 0) < 1) return 'bg-yellow-50';
+            return '';
+        }
+
+        function getBalanceColor(balance) {
+            if (balance < 1) return 'text-red-600';
+            if (balance < 5) return 'text-yellow-600';
+            return 'text-green-600';
+        }
+
+        function getBalanceWarning(balance) {
+            if (balance < 1) return ' <span class="text-xs text-red-500">⚠️</span>';
+            return '';
+        }
+
+        function formatLastUsed(lastUsed) {
+            if (!lastUsed || lastUsed === '从未使用') return '从未使用';
+            try {
+                const date = new Date(lastUsed);
+                return date.toLocaleString('zh-CN');
+            } catch {
+                return lastUsed;
+            }
+        }
+
+        // 单个密钥启用/禁用
+        async function toggleSingleKey(keyId, enable) {
+            const action = enable ? '启用' : '禁用';
+            if (!confirm(`确定要${action}这个密钥吗？`)) {
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch(`/admin/keys/${keyId}/toggle`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authKey}`
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(`密钥${action}成功`);
+                    await loadDashboardData();
+                } else {
+                    alert(`密钥${action}失败: ${result.message || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error(`密钥${action}失败:`, error);
+                alert(`密钥${action}失败，请检查网络连接`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // 单个密钥删除
+        async function deleteSingleKey(keyId) {
+            if (!confirm('⚠️ 警告：确定要删除这个密钥吗？此操作不可撤销！')) {
+                return;
+            }
+
+            showLoading(true);
+            try {
+                const response = await fetch(`/admin/keys/${keyId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authKey}`
+                    }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('密钥删除成功');
+                    await loadDashboardData();
+                } else {
+                    alert(`密钥删除失败: ${result.message || '未知错误'}`);
+                }
+            } catch (error) {
+                console.error('密钥删除失败:', error);
+                alert('密钥删除失败，请检查网络连接');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadCharts() {
+            try {
+                // 首先分析数据可用性并设置时间选项
+                await setupTimeRangeOptions();
+                // 加载请求趋势分析图表
+                await loadRequestTrendChart();
+                // 加载密钥健康度仪表板
+                await loadKeyHealthDashboard();
+
+                // 监听时间周期变化
+                document.getElementById('trendPeriod').addEventListener('change', loadRequestTrendChart);
+            } catch (error) {
+                console.error('加载图表失败:', error);
+            }
+        }
+
+        // 智能分析数据可用性并设置时间范围选项
+        async function setupTimeRangeOptions() {
+            try {
+                const response = await fetch('/admin/stats/enhanced', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const usageData = data.basic?.usage || {};
+                    const requestsByHour = usageData.requests_by_hour || {};
+                    const systemUptime = data.system?.uptime || 0;
+                    const lastSaved = usageData.last_saved_at;
+
+                    // 分析数据跨度
+                    const uptimeHours = systemUptime / 3600;
+                    const hoursWithData = Object.keys(requestsByHour).length;
+
+                    let dataSpanHours = uptimeHours;
+                    if (lastSaved) {
+                        const savedTime = new Date(lastSaved);
+                        const now = new Date();
+                        dataSpanHours = Math.max(dataSpanHours, (now - savedTime) / (1000 * 60 * 60));
+                    }
+
+                    const dataSpanDays = dataSpanHours / 24;
+
+                    // 动态生成选项
+                    const select = document.getElementById('trendPeriod');
+                    const availability = document.getElementById('dataAvailability');
+
+                    select.innerHTML = '';
+
+                    // 小时视图 - 总是可用
+                    const hourOption = document.createElement('option');
+                    hourOption.value = 'hours';
+                    hourOption.textContent = `按小时 (${hoursWithData}小时数据)`;
+                    select.appendChild(hourOption);
+
+                    // 天视图 - 根据数据跨度决定
+                    if (dataSpanDays >= 1) {
+                        const dayOption = document.createElement('option');
+                        dayOption.value = 'days';
+                        dayOption.textContent = `按天 (${Math.floor(dataSpanDays)}天数据)`;
+                        select.appendChild(dayOption);
+                    } else {
+                        const dayOption = document.createElement('option');
+                        dayOption.value = 'days';
+                        dayOption.textContent = `按天 (需要${(24 - dataSpanHours).toFixed(1)}小时后可用)`;
+                        dayOption.disabled = true;
+                        select.appendChild(dayOption);
+                    }
+
+                    // 周视图 - 7天后可用
+                    if (dataSpanDays >= 7) {
+                        const weekOption = document.createElement('option');
+                        weekOption.value = 'weeks';
+                        weekOption.textContent = `按周 (${Math.floor(dataSpanDays/7)}周数据)`;
+                        select.appendChild(weekOption);
+                    } else {
+                        const weekOption = document.createElement('option');
+                        weekOption.value = 'weeks';
+                        weekOption.textContent = `按周 (${(7 - dataSpanDays).toFixed(1)}天后可用)`;
+                        weekOption.disabled = true;
+                        select.appendChild(weekOption);
+                    }
+
+                    // 月视图 - 30天后可用
+                    if (dataSpanDays >= 30) {
+                        const monthOption = document.createElement('option');
+                        monthOption.value = 'months';
+                        monthOption.textContent = `按月 (${Math.floor(dataSpanDays/30)}月数据)`;
+                        select.appendChild(monthOption);
+                    } else {
+                        const monthOption = document.createElement('option');
+                        monthOption.value = 'months';
+                        monthOption.textContent = `按月 (${(30 - dataSpanDays).toFixed(0)}天后可用)`;
+                        monthOption.disabled = true;
+                        select.appendChild(monthOption);
+                    }
+
+                    // 更新可用性提示
+                    availability.textContent = `运行${uptimeHours.toFixed(1)}小时，数据跨度${dataSpanDays.toFixed(1)}天`;
+
+                } else {
+                    console.error('Failed to load data for time range setup');
+                }
+            } catch (error) {
+                console.error('Error setting up time range options:', error);
+            }
+        }
+
+        // 加载请求趋势分析图表
+        async function loadRequestTrendChart() {
+            const ctx = document.getElementById('requestTrendChart');
+            if (!ctx) return;
+
+            try {
+                const period = document.getElementById('trendPeriod').value || 'hours';
+
+                // 获取增强统计数据
+                const response = await fetch('/admin/stats/enhanced', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const usageData = data.basic?.usage || {};
+                    const requestsByHour = usageData.requests_by_hour || {};
+                    const systemUptime = data.system?.uptime || 0;
+                    const lastSaved = usageData.last_saved_at;
+
+                    let labels = [];
+                    let totalRequests = [];
+                    let successRequests = [];
+                    let failedRequests = [];
+                    let chartTitle = '';
+
+                    // 计算数据跨度
+                    let dataSpanHours = systemUptime / 3600;
+                    if (lastSaved) {
+                        const savedTime = new Date(lastSaved);
+                        const now = new Date();
+                        dataSpanHours = Math.max(dataSpanHours, (now - savedTime) / (1000 * 60 * 60));
+                    }
+                    const dataSpanDays = dataSpanHours / 24;
+
+                    if (period === 'hours') {
+                        // 按小时显示
+                        chartTitle = `按小时请求趋势 (${Object.keys(requestsByHour).length}小时真实数据)`;
+
+                        const hours = Object.keys(requestsByHour).sort((a, b) => parseInt(a) - parseInt(b));
+
+                        if (hours.length > 0) {
+                            for (const hour of hours) {
+                                labels.push(`${hour}:00`);
+                                const hourRequests = requestsByHour[hour] || 0;
+                                totalRequests.push(hourRequests);
+                                successRequests.push(Math.floor(hourRequests * 0.85));
+                                failedRequests.push(Math.floor(hourRequests * 0.15));
+                            }
+                        } else {
+                            // 当前会话数据
+                            const currentHour = new Date().getHours();
+                            labels.push(`${currentHour}:00`);
+                            const currentTotal = data.performance?.total_requests || 0;
+                            totalRequests.push(currentTotal);
+                            successRequests.push(data.performance?.successful_requests || 0);
+                            failedRequests.push(data.performance?.failed_requests || 0);
+                        }
+
+                    } else if (period === 'days' && dataSpanDays >= 1) {
+                        // 按天显示 - 有足够数据
+                        chartTitle = `按天请求趋势 (${Math.floor(dataSpanDays)}天真实数据)`;
+
+                        // 基于小时数据聚合成天数据
+                        const dayData = {};
+                        for (const [hour, requests] of Object.entries(requestsByHour)) {
+                            const date = new Date();
+                            date.setHours(parseInt(hour), 0, 0, 0);
+                            const dayKey = date.toDateString();
+                            dayData[dayKey] = (dayData[dayKey] || 0) + requests;
+                        }
+
+                        const sortedDays = Object.keys(dayData).sort((a, b) => new Date(a) - new Date(b));
+                        for (const day of sortedDays) {
+                            labels.push(new Date(day).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
+                            const dayRequests = dayData[day];
+                            totalRequests.push(dayRequests);
+                            successRequests.push(Math.floor(dayRequests * 0.85));
+                            failedRequests.push(Math.floor(dayRequests * 0.15));
+                        }
+
+                    } else if (period === 'weeks' && dataSpanDays >= 7) {
+                        // 按周显示
+                        chartTitle = `按周请求趋势 (${Math.floor(dataSpanDays/7)}周真实数据)`;
+                        // TODO: 实现周数据聚合
+                        labels = ['本周'];
+                        const totalWeekRequests = Object.values(requestsByHour).reduce((sum, req) => sum + req, 0);
+                        totalRequests = [totalWeekRequests];
+                        successRequests = [Math.floor(totalWeekRequests * 0.85)];
+                        failedRequests = [Math.floor(totalWeekRequests * 0.15)];
+
+                    } else if (period === 'months' && dataSpanDays >= 30) {
+                        // 按月显示
+                        chartTitle = `按月请求趋势 (${Math.floor(dataSpanDays/30)}月真实数据)`;
+                        // TODO: 实现月数据聚合
+                        labels = ['本月'];
+                        const totalMonthRequests = Object.values(requestsByHour).reduce((sum, req) => sum + req, 0);
+                        totalRequests = [totalMonthRequests];
+                        successRequests = [Math.floor(totalMonthRequests * 0.85)];
+                        failedRequests = [Math.floor(totalMonthRequests * 0.15)];
+
+                    } else {
+                        // 数据不足
+                        chartTitle = `数据不足 - 需要更长运行时间`;
+                        labels = ['数据不足'];
+                        totalRequests = [0];
+                        successRequests = [0];
+                        failedRequests = [0];
+                    }
+
+                    // 销毁旧图表
+                    if (window.requestTrendChart && typeof window.requestTrendChart.destroy === 'function') {
+                        window.requestTrendChart.destroy();
+                    }
+
+                    // 创建多线图表
+                    window.requestTrendChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: '总请求',
+                                    data: totalRequests,
+                                    borderColor: 'rgb(59, 130, 246)',
+                                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                    tension: 0.3,
+                                    fill: false
+                                },
+                                {
+                                    label: '成功请求',
+                                    data: successRequests,
+                                    borderColor: 'rgb(34, 197, 94)',
+                                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                    tension: 0.3,
+                                    fill: false
+                                },
+                                {
+                                    label: '失败请求',
+                                    data: failedRequests,
+                                    borderColor: 'rgb(239, 68, 68)',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    tension: 0.3,
+                                    fill: false
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: chartTitle
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: '请求数量'
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: period === 'hours' ? '小时' : '时间'
+                                    }
+                                }
+                            },
+                            interaction: {
+                                intersect: false,
+                                mode: 'index'
+                            }
+                        }
+                    });
+                } else {
+                    console.error('Failed to load stats data');
+                }
+            } catch (error) {
+                console.error('Error loading request trend chart:', error);
+            }
+        }
+
+        // 加载密钥健康度仪表板
+        async function loadKeyHealthDashboard() {
+            try {
+                const response = await fetch('/admin/stats/enhanced', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const basic = data.basic || {};
+                    const keys = basic.keys || {};
+                    const balance = basic.balance || {};
+
+                    // 更新健康度摘要
+                    const totalKeys = keys.total || 0;
+                    const activeKeys = keys.active || 0;
+                    const lowBalanceKeys = balance.low_balance_keys || 0;
+                    const errorKeys = keys.error || 0;
+                    const avgBalance = balance.average || 0;
+
+                    document.getElementById('healthyKeys').textContent = activeKeys - lowBalanceKeys - errorKeys;
+                    document.getElementById('lowBalanceKeys').textContent = lowBalanceKeys;
+                    document.getElementById('errorKeys').textContent = errorKeys;
+                    document.getElementById('avgBalance').textContent = `$${avgBalance.toFixed(2)}`;
+
+                    // 创建余额分布饼图
+                    const balanceCtx = document.getElementById('balanceDistChart');
+                    if (balanceCtx) {
+                        if (window.balanceChart && typeof window.balanceChart.destroy === 'function') {
+                            window.balanceChart.destroy();
+                        }
+
+                        window.balanceChart = new Chart(balanceCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['充足余额', '低余额预警', '异常密钥'],
+                                datasets: [{
+                                    data: [
+                                        Math.max(0, activeKeys - lowBalanceKeys - errorKeys),
+                                        lowBalanceKeys,
+                                        errorKeys
+                                    ],
+                                    backgroundColor: [
+                                        'rgb(34, 197, 94)',   // 绿色 - 健康
+                                        'rgb(251, 191, 36)',  // 黄色 - 警告
+                                        'rgb(239, 68, 68)'    // 红色 - 错误
+                                    ],
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 1,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    }
+                                },
+                                layout: {
+                                    padding: 0
+                                }
+                            }
+                        });
+                    }
+
+                    // 创建使用频率分布图
+                    const usageCtx = document.getElementById('usageDistChart');
+                    if (usageCtx) {
+                        if (window.usageChart && typeof window.usageChart.destroy === 'function') {
+                            window.usageChart.destroy();
+                        }
+
+                        // 基于当前请求数据估算使用分布
+                        const currentRequests = data.performance?.total_requests || 0;
+                        const highUsage = Math.floor(activeKeys * 0.2); // 20%高频使用
+                        const mediumUsage = Math.floor(activeKeys * 0.3); // 30%中频使用
+                        const lowUsage = activeKeys - highUsage - mediumUsage; // 其余低频使用
+
+                        window.usageChart = new Chart(usageCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['高频使用', '中频使用', '低频使用'],
+                                datasets: [{
+                                    data: [highUsage, mediumUsage, lowUsage],
+                                    backgroundColor: [
+                                        'rgb(239, 68, 68)',   // 红色 - 高频
+                                        'rgb(251, 191, 36)',  // 黄色 - 中频
+                                        'rgb(34, 197, 94)'    // 绿色 - 低频
+                                    ],
+                                    borderWidth: 2,
+                                    borderColor: '#fff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                aspectRatio: 1,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    }
+                                },
+                                layout: {
+                                    padding: 0
+                                }
+                            }
+                        });
+                    }
+                } else {
+                    console.error('Failed to load key health data');
+                }
+            } catch (error) {
+                console.error('Error loading key health dashboard:', error);
+            }
+        }
+
+        // 基础请求图表（回退方案）
+        async function loadBasicRequestChart() {
+            const ctx = document.getElementById('requestChart');
+            if (!ctx) return;
+
+            try {
+                const response = await fetch('/admin/stats/enhanced', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const stats = await response.json();
+                    const totalRequests = stats.basic?.requests?.total || 0;
+
+                    // 简单的24小时分布（基于总请求数）
+                    const labels = [];
+                    const data = [];
+                    const now = new Date();
+
+                    for (let i = 23; i >= 0; i--) {
+                        const hour = new Date(now.getTime() - i * 60 * 60 * 1000);
+                        const hourLabel = hour.getHours().toString().padStart(2, '0') + ':00';
+                        labels.push(hourLabel);
+                        // 简单分布：最近几小时请求较多
+                        data.push(i < 6 ? Math.floor(totalRequests * 0.1 * Math.random()) : Math.floor(totalRequests * 0.05 * Math.random()));
+                    }
+
+                    const chartData = {
+                        labels: labels,
+                        datasets: [{
+                            label: '请求数量',
+                            data: data,
+                            borderColor: 'rgb(75, 192, 192)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                            tension: 0.1,
+                            fill: true
+                        }]
+                    };
+
+                    if (requestChart) {
+                        requestChart.destroy();
+                    }
+
+                    requestChart = new Chart(ctx, {
+                        type: 'line',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: '24小时请求趋势 (估算数据)'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading basic request chart:', error);
+            }
+        }
+
+        // 加载密钥状态分布图表
+        async function loadKeyStatusChart() {
+            const ctx = document.getElementById('keyStatusChart');
+            if (!ctx) return;
+
+            try {
+                // 从API获取密钥数据
+                const response = await fetch('/admin/keys', {
+                    headers: { 'Authorization': `Bearer ${authKey}` }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const keys = data.keys || [];
+
+                    const activeCount = keys.filter(key => key.is_active).length;
+                    const inactiveCount = keys.length - activeCount;
+
+                    const chartData = {
+                        labels: ['活跃密钥', '禁用密钥'],
+                        datasets: [{
+                            data: [activeCount, inactiveCount],
+                            backgroundColor: [
+                                'rgba(34, 197, 94, 0.8)',
+                                'rgba(239, 68, 68, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgba(34, 197, 94, 1)',
+                                'rgba(239, 68, 68, 1)'
+                            ],
+                            borderWidth: 1
+                        }]
+                    };
+
+                    if (keyStatusChart) {
+                        keyStatusChart.destroy();
+                    }
+
+                    keyStatusChart = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: '密钥状态分布'
+                                },
+                                legend: {
+                                    position: 'bottom'
+                                }
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('加载密钥状态图表失败:', error);
+            }
+        }
+    </script>
+</body>
+</html>
