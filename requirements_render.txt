@@ -1,11 +1,11 @@
-# SiliconFlow API Pool - Render部署依赖（精简版）
+# SiliconFlow API Pool - Render部署依赖（Python 3.13预编译包版本）
 # 核心Web框架
 fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==1.10.13
 
-# HTTP客户端（主程序必需）
-aiohttp==3.8.5
+# HTTP客户端（确保有Python 3.13预编译包）
+aiohttp==3.10.11
 requests==2.31.0
 
 # Web相关
