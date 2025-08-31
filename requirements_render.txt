@@ -1,15 +1,23 @@
-# SiliconFlow API Pool - Render部署依赖（Python 3.13预编译包版本）
-# 核心Web框架
-fastapi==0.104.1
-uvicorn==0.24.0
-pydantic==1.10.13
+# SiliconFlow API Pool - Python 3.13完全兼容版本
+# 经过完整测试的Python 3.13兼容包组合
 
-# HTTP客户端（确保有Python 3.13预编译包）
-aiohttp==3.10.11
-requests==2.31.0
+# 核心Web框架 - 使用Python 3.13兼容版本
+fastapi==0.115.5
+uvicorn==0.32.1
+pydantic==2.10.3
 
-# Web相关
-starlette==0.27.0
+# HTTP客户端 - 确保Python 3.13预编译包
+aiohttp==3.11.10
+requests==2.32.3
 
-# 基础依赖
-typing-extensions==4.9.0
+# Web相关 - 最新稳定版本
+starlette==0.41.3
+
+# 基础依赖 - Python 3.13兼容
+typing-extensions==4.12.2
+anyio==4.7.0
+
+# 确保所有依赖都使用最新兼容版本
+certifi>=2024.8.30
+idna>=3.10
+urllib3>=2.2.3
