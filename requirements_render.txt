@@ -10,6 +10,9 @@ pydantic==2.10.3
 aiohttp==3.11.10
 requests==2.32.3
 
+# 安全加密 - 主程序必需
+cryptography>=43.0.0
+
 # Web相关 - 最新稳定版本
 starlette==0.41.3
 
