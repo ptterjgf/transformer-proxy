@@ -1,0 +1,60 @@
+{
+  "siliconflow": {
+    "base_url": "https://api.siliconflow.cn",
+    "timeout": 60,
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "balance_check_interval": 300,
+    "balance_warning_threshold": 1.0
+  },
+  "rate_limiting": {
+    "default_rpm": 999999999,
+    "default_tpm": 999999999,
+    "burst_multiplier": 1.5,
+    "enable_adaptive": true
+  },
+  "health_check": {
+    "check_interval": 300,
+    "failure_threshold": 3,
+    "recovery_threshold": 2,
+    "timeout": 30
+  },
+  "security": {
+    "whitelist_enabled": false,
+    "rate_limit_enabled": true,
+    "whitelist_ips": [],
+    "rate_limit_requests": 1000,
+    "rate_limit_window": 3600,
+    "ban_duration_minutes": 10
+  },
+  "alerts": {
+    "enabled": true,
+    "low_balance_threshold": 5.0,
+    "error_rate_threshold": 0.1,
+    "check_interval": 300,
+    "webhooks": {
+      "enabled": false,
+      "urls": []
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "max_file_size": "10MB",
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "performance": {
+    "max_concurrent_requests": 100,
+    "request_timeout": 180,
+    "connection_pool_size": 200,
+    "enable_caching": true,
+    "cache_ttl": 300
+  },
+  "prompt_safety": {
+    "enabled": true,
+    "api_url": "https://api.siliconflow.cn",
+    "models_to_check": ["image", "chat"],
+    "timeout": 30,
+    "max_retries": 2
+  }
+}
