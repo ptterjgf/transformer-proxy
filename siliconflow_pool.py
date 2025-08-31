@@ -1870,7 +1870,7 @@ class ConfigManager:
             # 服务配置
             "server": {
                 "host": "0.0.0.0",
-                "port": 8700,
+                "port": int(os.environ.get("PORT", 10000)),
                 "max_concurrent_requests": 100,
                 "request_timeout": 30,
             },
@@ -4558,7 +4558,7 @@ async def lifespan(app: FastAPI):
     # Startup
     await pool.initialize()
     setup_signal_handlers()
-    logger.info("SiliconFlow API Pool started on port 8700")
+    logger.info(f"SiliconFlow API Pool started on port {os.environ.get('PORT', 10000)}")
     logger.info(
         f"Loaded {len(pool.keys)} API keys, {sum(1 for k in pool.keys if k.is_active)} active"
     )
@@ -4706,7 +4706,7 @@ async def root():
         "service": "SiliconFlow API Pool",
         "version": "2.0.0",
         "status": "healthy" if stats["keys"]["active"] > 0 else "unhealthy",
-        "port": 8700,
+        "port": int(os.environ.get("PORT", 10000)),
         "endpoints": {
             "chat": "/v1/chat/completions",
             "images": "/v1/images/generations",
