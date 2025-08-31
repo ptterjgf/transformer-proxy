@@ -4724,9 +4724,7 @@ async def root():
             "4": "查看管理界面：GET /admin",
         },
         "auth_required": True,
-        "example_auth_key": (
-            auth_keys[0] if auth_keys else "请先创建 auth_keys.json 文件"
-        ),
+        "example_auth_key": "请联系管理员获取认证密钥",
         "current_status": {
             "active_keys": stats["keys"]["active"],
             "total_balance": f"${stats['balance']['total']:.2f}",
