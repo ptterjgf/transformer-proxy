@@ -2686,72 +2686,93 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 # 配置热更新任务
 async def config_hot_reload_task():
     """配置热更新任务"""
-    while True:
-        try:
-            config_manager.check_file_changes()
-            await asyncio.sleep(10)  # 每10秒检查一次
-        except Exception as e:
-            logger.error(f"Config hot reload task error: {e}")
-            await asyncio.sleep(60)
+    try:
+        while True:
+            try:
+                config_manager.check_file_changes()
+                await asyncio.sleep(10)  # 每10秒检查一次
+                if hasattr(pool, '_is_shutting_down') and pool._is_shutting_down:
+                    break
+            except asyncio.CancelledError:
+                logger.info("Config hot reload task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Config hot reload task error: {e}")
+                await asyncio.sleep(60)
+    except asyncio.CancelledError:
+        logger.info("Config hot reload task cancelled")
+    finally:
+        logger.info("Config hot reload task stopped")
 
 
 # 缓存定时清理任务
 async def cache_cleanup_task():
     """缓存定时清理任务"""
-    while True:
-        try:
-            await asyncio.sleep(3600)  # 每小时执行一次
+    try:
+        while True:
+            try:
+                await asyncio.sleep(3600)  # 每小时执行一次
+                
+                if hasattr(pool, '_is_shutting_down') and pool._is_shutting_down:
+                    break
 
-            # 清理过期的内存缓存
-            advanced_cache._cleanup_memory_cache()
+                # 清理过期的内存缓存
+                advanced_cache._cleanup_memory_cache()
 
-            # 清理旧的模型缓存（超过2小时）
-            current_time = time.time()
-            if hasattr(pool, "_model_cache") and pool._model_cache[0]:
-                _, timestamp = pool._model_cache
-                if current_time - timestamp > 7200:  # 2小时
-                    pool._model_cache = (None, 0)
-                    logger.info("Cleared expired model cache")
+                # 清理旧的模型缓存（超过2小时）
+                current_time = time.time()
+                if hasattr(pool, "_model_cache") and pool._model_cache[0]:
+                    _, timestamp = pool._model_cache
+                    if current_time - timestamp > 7200:  # 2小时
+                        pool._model_cache = (None, 0)
+                        logger.info("Cleared expired model cache")
 
-            # 清理旧的使用分析数据（保留最近30天）
-            cutoff_time = current_time - (30 * 24 * 3600)
-            old_requests = [
-                r
-                for r in usage_analytics.request_history
-                if r["timestamp"] < cutoff_time
-            ]
-            if old_requests:
-                usage_analytics.request_history = deque(
-                    [
-                        r
-                        for r in usage_analytics.request_history
-                        if r["timestamp"] >= cutoff_time
-                    ],
-                    maxlen=10000,
-                )
-                logger.info(f"Cleaned up {len(old_requests)} old usage records")
+                # 清理旧的使用分析数据（保留最近30天）
+                cutoff_time = current_time - (30 * 24 * 3600)
+                old_requests = [
+                    r
+                    for r in usage_analytics.request_history
+                    if r["timestamp"] < cutoff_time
+                ]
+                if old_requests:
+                    usage_analytics.request_history = deque(
+                        [
+                            r
+                            for r in usage_analytics.request_history
+                            if r["timestamp"] >= cutoff_time
+                        ],
+                        maxlen=10000,
+                    )
+                    logger.info(f"Cleaned up {len(old_requests)} old usage records")
 
-            # 清理旧的访问日志（保留最近7天）
-            cutoff_time = current_time - (7 * 24 * 3600)
-            old_logs = [
-                log
-                for log in security_manager.access_logs
-                if log["timestamp"] < cutoff_time
-            ]
-            if old_logs:
-                security_manager.access_logs = deque(
-                    [
-                        log
-                        for log in security_manager.access_logs
-                        if log["timestamp"] >= cutoff_time
-                    ],
-                    maxlen=10000,
-                )
-                logger.info(f"Cleaned up {len(old_logs)} old access logs")
+                # 清理旧的访问日志（保留最近7天）
+                cutoff_time = current_time - (7 * 24 * 3600)
+                old_logs = [
+                    log
+                    for log in security_manager.access_logs
+                    if log["timestamp"] < cutoff_time
+                ]
+                if old_logs:
+                    security_manager.access_logs = deque(
+                        [
+                            log
+                            for log in security_manager.access_logs
+                            if log["timestamp"] >= cutoff_time
+                        ],
+                        maxlen=10000,
+                    )
+                    logger.info(f"Cleaned up {len(old_logs)} old access logs")
 
-        except Exception as e:
-            logger.error(f"Cache cleanup task error: {e}")
-            await asyncio.sleep(300)  # 出错时等待5分钟再重试
+            except asyncio.CancelledError:
+                logger.info("Cache cleanup task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Cache cleanup task error: {e}")
+                await asyncio.sleep(300)  # 出错时等待5分钟再重试
+    except asyncio.CancelledError:
+        logger.info("Cache cleanup task cancelled")
+    finally:
+        logger.info("Cache cleanup task stopped")
 
 
 # ==================== 错误处理 ====================
@@ -4719,51 +4740,68 @@ async def lifespan(app: FastAPI):
     
     # Startup
     logger.info("Starting SiliconFlow API Pool...")
-    await pool.initialize()
-    setup_signal_handlers()
-    logger.info(f"SiliconFlow API Pool started on port {os.environ.get('PORT', 10000)}")
-    logger.info(
-        f"Loaded {len(pool.keys)} API keys, {sum(1 for k in pool.keys if k.is_active)} active"
-    )
-
-    # 启动后台任务
-    _background_tasks.append(asyncio.create_task(periodic_alert_check()))
-    _background_tasks.append(asyncio.create_task(config_hot_reload_task()))
-    _background_tasks.append(asyncio.create_task(cache_cleanup_task()))
-    
-    logger.info("Background tasks started")
-
-    yield
-
-    # Shutdown
-    logger.info("Shutting down SiliconFlow API Pool...")
-    
-    # 取消后台任务
-    for task in _background_tasks:
-        if not task.done():
-            task.cancel()
-    
-    # 等待任务完成，但设置短超时
-    if _background_tasks:
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*_background_tasks, return_exceptions=True),
-                timeout=1.0
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Background tasks shutdown timeout")
-        except Exception:
-            pass  # 忽略取消异常
-    
-    # 关闭池
     try:
-        await asyncio.wait_for(pool.shutdown(), timeout=2.0)
-    except asyncio.TimeoutError:
-        logger.warning("Pool shutdown timeout")
+        await pool.initialize()
+        setup_signal_handlers()
+        logger.info(f"SiliconFlow API Pool started on port {os.environ.get('PORT', 10000)}")
+        logger.info(
+            f"Loaded {len(pool.keys)} API keys, {sum(1 for k in pool.keys if k.is_active)} active"
+        )
+
+        # 启动后台任务
+        _background_tasks.append(asyncio.create_task(periodic_alert_check()))
+        _background_tasks.append(asyncio.create_task(config_hot_reload_task()))
+        _background_tasks.append(asyncio.create_task(cache_cleanup_task()))
+        
+        logger.info("Background tasks started")
     except Exception as e:
-        logger.error(f"Pool shutdown error: {e}")
-    
-    logger.info("Shutdown completed")
+        logger.error(f"Startup failed: {e}")
+        raise
+
+    try:
+        yield
+    finally:
+        # Shutdown - 使用 finally 确保总是执行
+        logger.info("Shutting down SiliconFlow API Pool...")
+        
+        # 设置关闭标志
+        if hasattr(pool, '_is_shutting_down'):
+            pool._is_shutting_down = True
+        
+        # 取消后台任务
+        cancelled_tasks = []
+        for task in _background_tasks:
+            if not task.done():
+                task.cancel()
+                cancelled_tasks.append(task)
+        
+        # 等待任务取消完成，使用更短的超时
+        if cancelled_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*cancelled_tasks, return_exceptions=True),
+                    timeout=0.5
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Background tasks shutdown timeout - forcing exit")
+            except Exception as e:
+                logger.debug(f"Background tasks shutdown exception (expected): {e}")
+        
+        # 关闭池
+        try:
+            await asyncio.wait_for(pool.shutdown(), timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning("Pool shutdown timeout - forcing exit")
+        except Exception as e:
+            logger.debug(f"Pool shutdown error (may be expected): {e}")
+        
+        # 清理全局连接器
+        try:
+            await cleanup_global_connector()
+        except Exception as e:
+            logger.debug(f"Connector cleanup error: {e}")
+        
+        logger.info("Shutdown completed")
 
 
 app = FastAPI(
@@ -4874,13 +4912,22 @@ async def periodic_alert_check():
     """定时告警检查任务"""
     try:
         while True:
-            await asyncio.sleep(300)  # 每5分钟检查一次
-            await pool.check_and_send_alerts()
+            try:
+                await asyncio.sleep(300)  # 每5分钟检查一次
+                if hasattr(pool, '_is_shutting_down') and pool._is_shutting_down:
+                    break
+                await pool.check_and_send_alerts()
+            except asyncio.CancelledError:
+                logger.info("Periodic alert check task cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Periodic alert check failed: {e}")
+                # 在错误后短暂等待，避免快速重试
+                await asyncio.sleep(60)
     except asyncio.CancelledError:
         logger.info("Periodic alert check task cancelled")
-        raise
-    except Exception as e:
-        logger.error(f"Periodic alert check failed: {e}")
+    finally:
+        logger.info("Periodic alert check task stopped")
 
 
 # ==================== API 端点 ====================
