@@ -4710,9 +4710,15 @@ class SiliconFlowPool:
 from contextlib import asynccontextmanager
 
 
+# 全局任务存储
+_background_tasks = []
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _background_tasks
+    
     # Startup
+    logger.info("Starting SiliconFlow API Pool...")
     await pool.initialize()
     setup_signal_handlers()
     logger.info(f"SiliconFlow API Pool started on port {os.environ.get('PORT', 10000)}")
@@ -4720,20 +4726,44 @@ async def lifespan(app: FastAPI):
         f"Loaded {len(pool.keys)} API keys, {sum(1 for k in pool.keys if k.is_active)} active"
     )
 
-    # 启动定时告警检查任务
-    asyncio.create_task(periodic_alert_check())
-
-    # 启动配置热更新任务
-    asyncio.create_task(config_hot_reload_task())
-
-    # 启动缓存清理任务
-    asyncio.create_task(cache_cleanup_task())
+    # 启动后台任务
+    _background_tasks.append(asyncio.create_task(periodic_alert_check()))
+    _background_tasks.append(asyncio.create_task(config_hot_reload_task()))
+    _background_tasks.append(asyncio.create_task(cache_cleanup_task()))
+    
+    logger.info("Background tasks started")
 
     yield
 
     # Shutdown
-    logger.info("Application shutdown initiated")
-    await pool.shutdown()
+    logger.info("Shutting down SiliconFlow API Pool...")
+    
+    # 取消后台任务
+    for task in _background_tasks:
+        if not task.done():
+            task.cancel()
+    
+    # 等待任务完成，但设置短超时
+    if _background_tasks:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*_background_tasks, return_exceptions=True),
+                timeout=1.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Background tasks shutdown timeout")
+        except Exception:
+            pass  # 忽略取消异常
+    
+    # 关闭池
+    try:
+        await asyncio.wait_for(pool.shutdown(), timeout=2.0)
+    except asyncio.TimeoutError:
+        logger.warning("Pool shutdown timeout")
+    except Exception as e:
+        logger.error(f"Pool shutdown error: {e}")
+    
+    logger.info("Shutdown completed")
 
 
 app = FastAPI(
@@ -4842,12 +4872,15 @@ async def verify_auth(
 
 async def periodic_alert_check():
     """定时告警检查任务"""
-    while True:
-        try:
+    try:
+        while True:
             await asyncio.sleep(300)  # 每5分钟检查一次
             await pool.check_and_send_alerts()
-        except Exception as e:
-            logger.error(f"Periodic alert check failed: {e}")
+    except asyncio.CancelledError:
+        logger.info("Periodic alert check task cancelled")
+        raise
+    except Exception as e:
+        logger.error(f"Periodic alert check failed: {e}")
 
 
 # ==================== API 端点 ====================
