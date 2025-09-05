@@ -4760,6 +4760,9 @@ async def lifespan(app: FastAPI):
 
     try:
         yield
+    except asyncio.CancelledError:
+        # 处理 lifespan 被取消的情况
+        logger.info("Lifespan cancelled, starting shutdown...")
     finally:
         # Shutdown - 使用 finally 确保总是执行
         logger.info("Shutting down SiliconFlow API Pool...")
@@ -4778,12 +4781,15 @@ async def lifespan(app: FastAPI):
         # 等待任务取消完成，使用更短的超时
         if cancelled_tasks:
             try:
-                await asyncio.wait_for(
-                    asyncio.gather(*cancelled_tasks, return_exceptions=True),
-                    timeout=0.5
+                # 使用 asyncio.wait 而不是 gather，更好地处理取消
+                done, pending = await asyncio.wait(
+                    cancelled_tasks, 
+                    timeout=0.5, 
+                    return_when=asyncio.ALL_COMPLETED
                 )
-            except asyncio.TimeoutError:
-                logger.warning("Background tasks shutdown timeout - forcing exit")
+                # 强制取消仍在运行的任务
+                for task in pending:
+                    task.cancel()
             except Exception as e:
                 logger.debug(f"Background tasks shutdown exception (expected): {e}")
         
@@ -8676,16 +8682,24 @@ class AsyncSafetyChecker:
 
     async def _worker(self):
         """后台工作线程，处理安全检查任务"""
-        while self.worker_running:
-            try:
-                task_id = await asyncio.wait_for(
-                    self.processing_queue.get(), timeout=1.0
-                )
-                await self._process_task(task_id)
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logger.error(f"Safety worker error: {e}")
+        try:
+            while self.worker_running:
+                try:
+                    task_id = await asyncio.wait_for(
+                        self.processing_queue.get(), timeout=1.0
+                    )
+                    await self._process_task(task_id)
+                except asyncio.TimeoutError:
+                    continue
+                except asyncio.CancelledError:
+                    logger.info("Safety worker cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Safety worker error: {e}")
+        except asyncio.CancelledError:
+            logger.info("Safety worker cancelled")
+        finally:
+            logger.info("Safety worker stopped")
 
     async def _process_task(self, task_id: str):
         """处理单个安全检查任务"""
@@ -9074,16 +9088,24 @@ class AsyncVideoGenerator:
 
     async def _worker(self):
         """后台工作线程，处理视频生成任务"""
-        while self.worker_running:
-            try:
-                task_id = await asyncio.wait_for(
-                    self.processing_queue.get(), timeout=1.0
-                )
-                await self._process_video_task(task_id)
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logger.error(f"Video worker error: {e}")
+        try:
+            while self.worker_running:
+                try:
+                    task_id = await asyncio.wait_for(
+                        self.processing_queue.get(), timeout=1.0
+                    )
+                    await self._process_video_task(task_id)
+                except asyncio.TimeoutError:
+                    continue
+                except asyncio.CancelledError:
+                    logger.info("Video worker cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Video worker error: {e}")
+        except asyncio.CancelledError:
+            logger.info("Video worker cancelled")
+        finally:
+            logger.info("Video worker stopped")
 
     async def _process_video_task(self, task_id: str):
         """处理单个视频生成任务"""
