@@ -1625,23 +1625,47 @@ class AutoRecoverySystem:
 
     async def _health_check_loop(self):
         """健康检查循环"""
-        while self.is_running:
-            try:
-                await self._perform_health_checks()
-                await asyncio.sleep(self.config.check_interval)
-            except Exception as e:
-                logger.error(f"Health check loop error: {e}")
-                await asyncio.sleep(60)  # 出错时等待1分钟再重试
+        try:
+            while self.is_running:
+                try:
+                    await self._perform_health_checks()
+                    await asyncio.sleep(self.config.check_interval)
+                except asyncio.CancelledError:
+                    logger.info("Health check loop cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Health check loop error: {e}")
+                    try:
+                        await asyncio.sleep(60)  # 出错时等待1分钟再重试
+                    except asyncio.CancelledError:
+                        logger.info("Health check loop cancelled during error recovery")
+                        break
+        except asyncio.CancelledError:
+            logger.info("Health check loop cancelled")
+        finally:
+            logger.info("Health check loop stopped")
 
     async def _recovery_loop(self):
         """恢复检查循环"""
-        while self.is_running:
-            try:
-                await self._attempt_recovery()
-                await asyncio.sleep(self.config.check_interval // 2)  # 恢复检查更频繁
-            except Exception as e:
-                logger.error(f"Recovery loop error: {e}")
-                await asyncio.sleep(30)
+        try:
+            while self.is_running:
+                try:
+                    await self._attempt_recovery()
+                    await asyncio.sleep(self.config.check_interval // 2)  # 恢复检查更频繁
+                except asyncio.CancelledError:
+                    logger.info("Recovery loop cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Recovery loop error: {e}")
+                    try:
+                        await asyncio.sleep(30)
+                    except asyncio.CancelledError:
+                        logger.info("Recovery loop cancelled during error recovery")
+                        break
+        except asyncio.CancelledError:
+            logger.info("Recovery loop cancelled")
+        finally:
+            logger.info("Recovery loop stopped")
 
     async def _perform_health_checks(self):
         """执行健康检查"""
@@ -3163,7 +3187,10 @@ class SiliconFlowPool:
                 for task in tasks:
                     task.cancel()
                 # 等待任务取消完成
-                await asyncio.gather(*tasks, return_exceptions=True)
+                try:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                except asyncio.CancelledError:
+                    logger.debug("Task gathering cancelled (expected during shutdown)")
 
             logger.info("System shutdown completed")
 
@@ -3666,7 +3693,14 @@ class SiliconFlowPool:
                 # 简化的余额检查
                 if await self._simple_balance_check(key):
                     updated_count += 1
-                await asyncio.sleep(0.1)  # 避免请求过于频繁
+                try:
+                    await asyncio.sleep(0.1)  # 避免请求过于频繁
+                except asyncio.CancelledError:
+                    logger.info("Batch balance check sleep cancelled")
+                    break
+            except asyncio.CancelledError:
+                logger.info("Batch balance check cancelled")
+                break
             except Exception as e:
                 logger.error(f"检查密钥 {key.key[:8]}... 余额时出错: {e}")
         
@@ -4763,6 +4797,7 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         # 处理 lifespan 被取消的情况
         logger.info("Lifespan cancelled, starting shutdown...")
+        raise  # 重要：必须重新抛出 CancelledError
     finally:
         # Shutdown - 使用 finally 确保总是执行
         logger.info("Shutting down SiliconFlow API Pool...")
@@ -4790,6 +4825,8 @@ async def lifespan(app: FastAPI):
                 # 强制取消仍在运行的任务
                 for task in pending:
                     task.cancel()
+            except asyncio.CancelledError:
+                logger.debug("Background tasks wait cancelled (expected during shutdown)")
             except Exception as e:
                 logger.debug(f"Background tasks shutdown exception (expected): {e}")
         
@@ -4798,12 +4835,16 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(pool.shutdown(), timeout=1.0)
         except asyncio.TimeoutError:
             logger.warning("Pool shutdown timeout - forcing exit")
+        except asyncio.CancelledError:
+            logger.debug("Pool shutdown cancelled (expected during shutdown)")
         except Exception as e:
             logger.debug(f"Pool shutdown error (may be expected): {e}")
         
         # 清理全局连接器
         try:
             await cleanup_global_connector()
+        except asyncio.CancelledError:
+            logger.debug("Connector cleanup cancelled (expected during shutdown)")
         except Exception as e:
             logger.debug(f"Connector cleanup error: {e}")
         
@@ -4859,10 +4900,16 @@ class GracefulShutdown:
 
         # 等待当前请求完成
         logger.info("Waiting for current requests to complete...")
-        await asyncio.sleep(1)  # 给当前请求一些时间完成
+        try:
+            await asyncio.sleep(1)  # 给当前请求一些时间完成
+        except asyncio.CancelledError:
+            logger.debug("Sleep cancelled during shutdown (expected)")
 
         # 关闭池
-        await pool.shutdown()
+        try:
+            await pool.shutdown()
+        except asyncio.CancelledError:
+            logger.debug("Pool shutdown cancelled (expected)")
         logger.info("Graceful shutdown completed")
 
         # 强制退出
@@ -4929,7 +4976,11 @@ async def periodic_alert_check():
             except Exception as e:
                 logger.error(f"Periodic alert check failed: {e}")
                 # 在错误后短暂等待，避免快速重试
-                await asyncio.sleep(60)
+                try:
+                    await asyncio.sleep(60)
+                except asyncio.CancelledError:
+                    logger.info("Periodic alert check sleep cancelled during error recovery")
+                    break
     except asyncio.CancelledError:
         logger.info("Periodic alert check task cancelled")
     finally:
@@ -6207,7 +6258,11 @@ async def analyze_keys(auth_key: str = Depends(verify_auth)) -> Dict[str, Any]:
 
         # 小延迟避免过于频繁的API调用
         if i + batch_size < total_keys:
-            await asyncio.sleep(1)
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.info("Batch balance check inter-batch sleep cancelled")
+                break
 
     # 保存更新后的密钥状态（只保存文件密钥）
     await pool.save_keys()
@@ -6715,7 +6770,11 @@ async def batch_check_balance(request: Request, auth_key: str = Depends(verify_a
 
                 # 在批次之间略微停顿，减少服务器压力
                 if i + batch_size < len(key_ids):  # 不是最后一批
-                    await asyncio.sleep(0.5)
+                    try:
+                        await asyncio.sleep(0.5)
+                    except asyncio.CancelledError:
+                        logger.info("Batch processing inter-batch sleep cancelled")
+                        break
 
             except Exception as e:
                 logger.error(f"Batch processing error: {e}")
@@ -6884,7 +6943,11 @@ async def websocket_admin_endpoint(websocket: WebSocket, token: str = None):
             )
 
             # 等待30秒后发送下一次更新
-            await asyncio.sleep(30)
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                logger.info("WebSocket monitoring sleep cancelled")
+                break
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -9201,7 +9264,11 @@ class AsyncVideoGenerator:
 
             # 等待结果（最多等待2分钟）
             for _ in range(60):  # 60次 * 2秒 = 2分钟
-                await asyncio.sleep(2)
+                try:
+                    await asyncio.sleep(2)
+                except asyncio.CancelledError:
+                    logger.info("Safety check polling sleep cancelled")
+                    break
                 status = async_safety_checker.get_task_status(task_id)
                 if status.get("status") == "completed":
                     return status.get("result")
@@ -9591,7 +9658,12 @@ class ConcurrentRequestHandler:
                 # 模拟API调用（实际实现中替换为真实的API调用）
                 api_start = time.time()
                 # response = await self._call_siliconflow_api(key, request_data)
-                await asyncio.sleep(0.1)  # 模拟API调用延迟
+                try:
+                    await asyncio.sleep(0.1)  # 模拟API调用延迟
+                except asyncio.CancelledError:
+                    logger.info("API call simulation sleep cancelled during shutdown.")
+                    key_rotator.mark_key_result(key, False, 0)  # 如果取消，则标记为失败
+                    raise  # 重新抛出异常以确保关闭流程继续
                 api_time = time.time() - api_start
 
                 # 标记成功
