@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
-from typing import Dict, List, Optional, Any, AsyncGenerator, Tuple, Set
+from typing import Deque, Dict, List, Optional, Any, AsyncGenerator, Tuple, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import hashlib
@@ -88,8 +88,12 @@ async def cleanup_global_connector():
     """清理全局连接器"""
     global _global_connector
     if _global_connector is not None:
-        await _global_connector.close()
-        _global_connector = None
+        try:
+            await _global_connector.close()
+        except Exception as e:
+            logger.warning(f"Error closing global connector: {e}")
+        finally:
+            _global_connector = None
 
 
 # ==================== 指标收集 ====================
@@ -106,7 +110,7 @@ try:
         CollectorRegistry,
     )
 
-    PROMETHEUS_AVAILABLE = True
+    prometheus_available = True
 
     # 创建自定义注册表避免重复注册
     prometheus_registry = CollectorRegistry()
@@ -167,7 +171,7 @@ try:
     )
 
 except ImportError:
-    PROMETHEUS_AVAILABLE = False
+    prometheus_available = False
     prometheus_registry = None
     logger.warning("Prometheus client not available, metrics collection disabled")
 
@@ -206,7 +210,7 @@ class PrometheusMetrics:
     @staticmethod
     def record_request(method: str, endpoint: str, status_code: int, duration: float):
         """记录请求指标"""
-        if PROMETHEUS_AVAILABLE:
+        if prometheus_available:
             REQUEST_COUNT.labels(
                 method=method, endpoint=endpoint, status=str(status_code)
             ).inc()
@@ -215,31 +219,31 @@ class PrometheusMetrics:
     @staticmethod
     def record_api_key_usage(key_id: str, model: str):
         """记录API密钥使用"""
-        if PROMETHEUS_AVAILABLE:
+        if prometheus_available:
             API_KEY_USAGE.labels(key_id=key_id[:8], model=model).inc()
 
     @staticmethod
     def record_safety_check(check_type: str, duration: float):
         """记录安全检查"""
-        if PROMETHEUS_AVAILABLE:
+        if prometheus_available:
             SAFETY_CHECK_DURATION.labels(type=check_type).observe(duration)
 
     @staticmethod
     def record_generation(model: str, gen_type: str):
         """记录生成请求"""
-        if PROMETHEUS_AVAILABLE:
+        if prometheus_available:
             GENERATION_COUNT.labels(model=model, type=gen_type).inc()
 
     @staticmethod
     def record_error(error_type: str):
         """记录错误"""
-        if PROMETHEUS_AVAILABLE:
+        if prometheus_available:
             ERROR_COUNT.labels(error_type=error_type).inc()
 
     @staticmethod
     def set_active_connections(count: int):
         """设置活跃连接数"""
-        if PROMETHEUS_AVAILABLE:
+        if prometheus_available:
             ACTIVE_CONNECTIONS.set(count)
 
 
@@ -251,9 +255,9 @@ prometheus_metrics = PrometheusMetrics()
 try:
     import tiktoken
 
-    TIKTOKEN_AVAILABLE = True
+    tiktoken_available = True
 except ImportError:
-    TIKTOKEN_AVAILABLE = False
+    tiktoken_available = False
     logger.info("tiktoken not installed, using fallback token estimation")
 
 from collections import deque
@@ -264,7 +268,7 @@ class TokenEstimator:
     """精确的Token估算器"""
 
     def __init__(self):
-        if TIKTOKEN_AVAILABLE:
+        if tiktoken_available:
             try:
                 self.encoder = tiktoken.get_encoding("cl100k_base")  # GPT-4编码器
             except Exception as e:
@@ -285,7 +289,7 @@ class TokenEstimator:
         # 回退方案：简单估算
         return max(1, len(text) // 4)
 
-    def estimate_request_tokens(self, request_data: Dict) -> int:
+    def estimate_request_tokens(self, request_data: Dict[str, Any]) -> int:
         """估算请求的总token数"""
         input_tokens = 0
         output_tokens = request_data.get("max_tokens", 1000)
@@ -309,14 +313,14 @@ class RequestQueue:
         self.priority_heap = []  # 优先级堆
         self.queue_lock = asyncio.Lock()
 
-    async def enqueue(self, request_info: Dict, priority: int = 1):
+    async def enqueue(self, request_info: Dict[str, Any], priority: int = 1):
         """将请求加入队列"""
         async with self.queue_lock:
             queue_id = f"priority_{priority}"
             self.queues[queue_id].append(request_info)
             heapq.heappush(self.priority_heap, (priority, queue_id, time.time()))
 
-    async def dequeue(self) -> Optional[Dict]:
+    async def dequeue(self) -> Optional[Dict[str, Any]]:
         """从队列中取出请求"""
         async with self.queue_lock:
             while self.priority_heap:
@@ -420,7 +424,7 @@ class KeyPerformanceTracker:
     """密钥性能追踪器"""
 
     def __init__(self):
-        self.performance_data = defaultdict(
+        self.performance_data: Dict[str, Dict[str, Any]] = defaultdict(
             lambda: {
                 "response_times": deque(maxlen=100),  # 最近100次响应时间
                 "success_count": 0,
@@ -1025,9 +1029,9 @@ alert_manager = AlertManager()
 try:
     import redis
 
-    REDIS_AVAILABLE = True
+    redis_available = True
 except ImportError:
-    REDIS_AVAILABLE = False
+    redis_available = False
     logger.info("Redis not available, using in-memory cache")
 
 import pickle
@@ -1038,7 +1042,7 @@ class CacheConfig:
     """缓存配置"""
 
     def __init__(self):
-        self.redis_enabled = REDIS_AVAILABLE
+        self.redis_enabled = redis_available
         self.redis_host = "localhost"
         self.redis_port = 6379
         self.redis_db = 0
@@ -1060,9 +1064,9 @@ class AdvancedCache:
 
     def __init__(self):
         self.config = CacheConfig()
-        self.redis_client = None
-        self.memory_cache = {}  # 内存缓存回退
-        self.cache_stats = {"hits": 0, "misses": 0, "sets": 0, "deletes": 0}
+        self.redis_client: Optional[redis.Redis] = None
+        self.memory_cache: Dict[str, Dict[str, Any]] = {}  # 内存缓存回退
+        self.cache_stats: Dict[str, int] = {"hits": 0, "misses": 0, "sets": 0, "deletes": 0}
 
         self._init_redis()
 
@@ -1138,7 +1142,7 @@ class AdvancedCache:
             self.cache_stats["misses"] += 1
             return None
 
-    async def set(self, key: str, value, ttl: int = 3600):
+    async def set(self, key: str, value: Any, ttl: int = 3600) -> None:
         """设置缓存数据"""
         try:
             serialized_data = self._serialize_data(value)
@@ -1156,7 +1160,7 @@ class AdvancedCache:
         except Exception as e:
             logger.error(f"Cache set error: {e}")
 
-    async def delete(self, key: str):
+    async def delete(self, key: str) -> None:
         """删除缓存数据"""
         try:
             if self.redis_client:
@@ -1170,7 +1174,7 @@ class AdvancedCache:
         except Exception as e:
             logger.error(f"Cache delete error: {e}")
 
-    async def clear_pattern(self, pattern: str):
+    async def clear_pattern(self, pattern: str) -> None:
         """清除匹配模式的缓存"""
         try:
             if self.redis_client:
@@ -1214,7 +1218,7 @@ class AdvancedCache:
             for key, _ in keys_to_remove:
                 del self.memory_cache[key]
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> Dict[str, Any]:
         """获取缓存统计"""
         total_requests = self.cache_stats["hits"] + self.cache_stats["misses"]
         hit_rate = (
@@ -1571,27 +1575,27 @@ class HealthCheckConfig:
     """健康检查配置"""
 
     def __init__(self):
-        self.check_interval = 300  # 5分钟检查一次
-        self.failure_threshold = 3  # 连续失败3次认为不健康
-        self.recovery_threshold = 2  # 连续成功2次认为恢复
-        self.timeout = 30  # 健康检查超时时间
-        self.max_concurrent_checks = 10  # 最大并发检查数
+        self.check_interval: int = 300  # 5分钟检查一次
+        self.failure_threshold: int = 3  # 连续失败3次认为不健康
+        self.recovery_threshold: int = 2  # 连续成功2次认为恢复
+        self.timeout: int = 30  # 健康检查超时时间
+        self.max_concurrent_checks: int = 10  # 最大并发检查数
 
 
 class AutoRecoverySystem:
     """自动故障恢复系统"""
 
-    def __init__(self, pool):
+    def __init__(self, pool: "SiliconFlowPool"):
         self.pool = pool
         self.config = HealthCheckConfig()
-        self.health_status = {}  # 密钥健康状态
-        self.recovery_attempts = defaultdict(int)  # 恢复尝试次数
-        self.last_health_check = {}  # 上次健康检查时间
-        self.is_running = False
-        self.check_semaphore = asyncio.Semaphore(self.config.max_concurrent_checks)
+        self.health_status: Dict[str, Dict[str, Any]] = {}  # 密钥健康状态
+        self.recovery_attempts: Dict[str, int] = defaultdict(int)  # 恢复尝试次数
+        self.last_health_check: Dict[str, float] = {}  # 上次健康检查时间
+        self.is_running: bool = False
+        self.check_semaphore: asyncio.Semaphore = asyncio.Semaphore(self.config.max_concurrent_checks)
 
         # 故障模式检测
-        self.failure_patterns = {
+        self.failure_patterns: Dict[str, List[str]] = {
             "rate_limit": ["rate limit", "too many requests", "quota exceeded"],
             "auth_error": ["unauthorized", "invalid api key", "authentication failed"],
             "server_error": ["internal server error", "service unavailable", "timeout"],
@@ -1666,26 +1670,39 @@ class AutoRecoverySystem:
             self.last_health_check[key_id] = current_time
 
             try:
-                # 使用简单的模型列表请求作为健康检查
+                # 使用用户信息接口检查密钥健康状态和余额
                 headers = {"Authorization": f"Bearer {key.key}"}
                 async with self.pool.session.get(
-                    f"{Config.SILICONFLOW_BASE_URL}/models",
+                    f"{Config.SILICONFLOW_BASE_URL}/user/info",
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=self.config.timeout),
+                    timeout=aiohttp.ClientTimeout(total=30),
                 ) as response:
 
                     if response.status == 200:
+                        # 解析响应获取余额信息
+                        try:
+                            data = await response.json()
+                            if 'data' in data and 'balance' in data['data']:
+                                balance = float(data['data']['balance'])
+                                key.balance = balance
+                                logger.debug(f"密钥 {key.key[:8]}... 余额更新: {balance}")
+                        except Exception as e:
+                            logger.warning(f"解析余额信息失败: {e}")
+                        
                         # 健康检查成功
                         await self._record_health_success(key_id)
+                        return True
                     else:
                         # 健康检查失败
                         error_text = await response.text()
                         await self._record_health_failure(
                             key_id, f"HTTP {response.status}: {error_text}"
                         )
+                        return False
 
             except Exception as e:
                 await self._record_health_failure(key_id, str(e))
+                return False
 
     async def _record_health_success(self, key_id: str):
         """记录健康检查成功"""
@@ -2056,14 +2073,14 @@ class ConfigManager:
             except Exception as e:
                 logger.error(f"Failed to save config file: {e}")
 
-    def get(self, section: str, key: str = None, default=None):
+    def get(self, section: str, key: Optional[str] = None, default: Any = None) -> Any:
         """获取配置值"""
         with self.lock:
             if key is None:
                 return self.config.get(section, default)
             return self.config.get(section, {}).get(key, default)
 
-    def set(self, section: str, key: str, value: Any, save: bool = True):
+    def set(self, section: str, key: str, value: Any, save: bool = True) -> None:
         """设置配置值"""
         with self.lock:
             if section not in self.config:
@@ -2078,7 +2095,7 @@ class ConfigManager:
             # 通知监听器
             self._notify_watchers(section, key, old_value, value)
 
-    def update_section(self, section: str, updates: dict, save: bool = True):
+    def update_section(self, section: str, updates: Dict[str, Any], save: bool = True) -> None:
         """批量更新配置段"""
         with self.lock:
             if section not in self.config:
@@ -2095,14 +2112,14 @@ class ConfigManager:
                 old_value = old_values.get(key)
                 self._notify_watchers(section, key, old_value, value)
 
-    def watch(self, section: str, key: str, callback: Callable[[Any, Any], None]):
+    def watch(self, section: str, key: str, callback: Callable[[Any, Any], None]) -> None:
         """监听配置变更"""
         watch_key = f"{section}.{key}"
         if watch_key not in self.watchers:
             self.watchers[watch_key] = []
         self.watchers[watch_key].append(callback)
 
-    def _notify_watchers(self, section: str, key: str, old_value: Any, new_value: Any):
+    def _notify_watchers(self, section: str, key: str, old_value: Any, new_value: Any) -> None:
         """通知配置变更监听器"""
         watch_key = f"{section}.{key}"
         if watch_key in self.watchers:
@@ -2112,7 +2129,7 @@ class ConfigManager:
                 except Exception as e:
                     logger.error(f"Config watcher callback failed: {e}")
 
-    def check_file_changes(self):
+    def check_file_changes(self) -> bool:
         """检查配置文件是否有变更"""
         if not os.path.exists(self.config_file):
             return False
@@ -2124,12 +2141,12 @@ class ConfigManager:
             return True
         return False
 
-    def get_all_config(self) -> dict:
+    def get_all_config(self) -> Dict[str, Any]:
         """获取所有配置"""
         with self.lock:
             return self.config.copy()
 
-    def validate_config(self) -> list:
+    def validate_config(self) -> List[str]:
         """验证配置有效性"""
         errors = []
 
@@ -2168,29 +2185,30 @@ from cryptography.fernet import Fernet
 import base64
 import ipaddress
 from collections import defaultdict, deque
+from typing import Set, Union
 
 
 class SecurityManager:
     """安全管理系统"""
 
     def __init__(self):
-        self.encryption_key = self._get_or_create_encryption_key()
-        self.cipher_suite = Fernet(self.encryption_key)
+        self.encryption_key: bytes = self._get_or_create_encryption_key()
+        self.cipher_suite: Fernet = Fernet(self.encryption_key)
 
         # 访问日志
-        self.access_logs = deque(maxlen=10000)
+        self.access_logs: "deque[Dict[str, Any]]" = deque(maxlen=10000)
 
         # 速率限制
-        self.rate_limits = defaultdict(
+        self.rate_limits: Dict[str, Dict[str, Any]] = defaultdict(
             lambda: {"requests": 0, "window_start": time.time()}
         )
 
         # IP白名单
-        self.ip_whitelist = set()
+        self.ip_whitelist: Set[Union[ipaddress.IPv4Address, ipaddress.IPv6Address, ipaddress.IPv4Network, ipaddress.IPv6Network]] = set()
         self.load_ip_whitelist()
 
         # 失败尝试跟踪
-        self.failed_attempts = defaultdict(
+        self.failed_attempts: Dict[str, Dict[str, Any]] = defaultdict(
             lambda: {"count": 0, "last_attempt": 0, "blocked_until": 0}
         )
 
@@ -2235,7 +2253,7 @@ class SecurityManager:
             logger.error(f"Failed to decrypt API key: {e}")
             return encrypted_key  # 假设是明文
 
-    def load_ip_whitelist(self):
+    def load_ip_whitelist(self) -> None:
         """加载IP白名单"""
         whitelist_config = config_manager.get("security", "ip_whitelist", [])
         self.ip_whitelist.clear()
@@ -2302,7 +2320,7 @@ class SecurityManager:
         client_data["requests"] += 1
         return True
 
-    def record_failed_attempt(self, client_ip: str, reason: str):
+    def record_failed_attempt(self, client_ip: str, reason: str) -> None:
         """记录失败尝试"""
         current_time = time.time()
         attempt_data = self.failed_attempts[client_ip]
@@ -2337,7 +2355,7 @@ class SecurityManager:
 
     def log_access(
         self, client_ip: str, status: str, details: str = "", user_agent: str = ""
-    ):
+    ) -> None:
         """记录访问日志"""
         log_entry = {
             "timestamp": time.time(),
@@ -2362,11 +2380,11 @@ class SecurityManager:
             except Exception as e:
                 logger.error(f"Failed to write security log: {e}")
 
-    def get_access_logs(self, limit: int = 100) -> list:
+    def get_access_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
         """获取访问日志"""
         return list(self.access_logs)[-limit:]
 
-    def get_security_stats(self) -> dict:
+    def get_security_stats(self) -> Dict[str, Any]:
         """获取安全统计"""
         current_time = time.time()
 
@@ -2884,6 +2902,12 @@ class UsageStats:
             self.requests_by_hour = defaultdict(int)
             self.requests_by_hour.update(old_data)
 
+    def record_key_usage(self, key_id: str):
+        """记录密钥使用"""
+        self.total_requests += 1
+        current_hour = int(time.time() // 3600)
+        self.requests_by_hour[current_hour] += 1
+
 
 # ==================== 配置 ====================
 
@@ -2989,16 +3013,31 @@ class SiliconFlowPool:
 
     def __init__(self):
         self.keys: List[SiliconFlowKey] = []
-        self.current_index = 0
         self.request_counts: Dict[str, List[float]] = defaultdict(list)
         self.session: Optional[aiohttp.ClientSession] = None
         self.auth_manager = AuthManager()
         self.usage_stats = UsageStats()
 
-        # 改进的轮询调度机制
-        self.round_robin_tracker = {}  # 跟踪每轮中密钥的使用情况
-        self.current_round = 0  # 当前轮次
-        self.keys_used_in_round = set()  # 当前轮次中已使用的密钥
+        # 严格1-N顺序轮询优化机制
+        self.sorted_keys: List[SiliconFlowKey] = []  # 按余额排序的密钥列表
+        self.current_index = 0  # 当前轮询索引
+        self.batch_check_size = 3  # 批量检查大小
+        
+        # 密钥冷却机制
+        self.key_cooldowns: Dict[str, float] = {}  # key_id -> cooldown_end_time
+        self.cooldown_duration = 60  # 冷却时间60秒
+        
+        # 余额排序机制
+        self.last_reorder = 0  # 上次重排序时间
+        self.reorder_interval = 300  # 重排序间隔5分钟
+        self.last_balance_check = 0  # 上次余额检查时间
+        self.balance_check_interval = 600  # 余额检查间隔10分钟
+        
+        # 密钥使用时间记录
+        self.key_usage_times: Dict[str, float] = {}
+        
+        # 自动恢复系统（将在initialize中初始化）
+        self.auto_recovery = None
 
         # 系统启动时间
         self.start_time = time.time()
@@ -3155,6 +3194,10 @@ class SiliconFlowPool:
             logger.warning(
                 "No SiliconFlow API keys found. Please add keys via environment variables or JSON file."
             )
+        else:
+            # 立即按余额排序密钥，确保最高余额的密钥排在最前面
+            self._reorder_keys_by_balance()
+            logger.info(f"密钥加载完成，已按余额排序，共{len(self.keys)}个密钥")
 
     def _load_keys_from_environment(self):
         """从环境变量加载密钥（支持多种格式）"""
@@ -3429,104 +3472,218 @@ class SiliconFlowPool:
         key.last_used = current_time
 
     def get_available_key(self, estimated_tokens: int = 0) -> Optional[SiliconFlowKey]:
-        """获取可用的 Key - 使用改进的轮询调度"""
+        """获取可用的 Key - 使用严格1-N顺序轮询，增强错误处理"""
         if not self.keys:
+            logger.error("系统未配置任何API密钥")
             return None
 
-        # 过滤可用的 Keys：基于官方余额判定有效性
-        available_keys = [
-            k for k in self.keys if k.is_active and (k.balance is None or k.balance > 0)
-        ]
-        if not available_keys:
-            return None
+        # 检查是否需要重新排序密钥
+        current_time = time.time()
+        if current_time - self.last_reorder > self.reorder_interval:
+            self._reorder_keys_by_balance()
 
-        # 优先使用智能调度器选择最佳密钥
-        optimal_key = intelligent_scheduler.select_optimal_key(
-            available_keys, estimated_tokens
-        )
-        if optimal_key:
-            # 预留tokens
-            tpm_optimizer.reserve_tokens(optimal_key, estimated_tokens)
-            # 记录密钥使用
-            self._record_key_usage(optimal_key)
-            return optimal_key
+        # 检查是否需要批量检查余额
+        if current_time - self.last_balance_check > self.balance_check_interval:
+            asyncio.create_task(self._batch_check_balances())
 
-        # 使用改进的轮询策略：确保每个密钥都被调用过一次后再开始下一轮
-        selected_key = self._get_round_robin_key(available_keys, estimated_tokens)
+        # 统计密钥状态
+        total_keys = len(self.keys)
+        active_keys = sum(1 for key in self.keys if key.is_active)
+        cooldown_keys = sum(1 for key in self.keys if self._is_key_in_cooldown(hashlib.md5(key.key.encode()).hexdigest()[:8]))
+        balance_insufficient = sum(1 for key in self.keys if key.balance is not None and key.balance <= 0)
+        
+        logger.debug(f"密钥状态统计：总计{total_keys}个，激活{active_keys}个，冷却{cooldown_keys}个，余额不足{balance_insufficient}个")
+
+        # 使用严格顺序轮询获取下一个可用密钥
+        selected_key = self._get_next_sequential_key()
         if selected_key:
+            # 设置冷却并记录使用
+            self._set_key_cooldown(selected_key)
             self._record_key_usage(selected_key)
+            logger.info(f"成功分配密钥: {selected_key.key[:8]}... (余额: {selected_key.balance})")
             return selected_key
 
-        # 所有key都不可用
+        # 所有key都不可用 - 详细错误分析
+        if active_keys == 0:
+            logger.error(f"所有{total_keys}个密钥都被禁用，无可用密钥。")
+        elif cooldown_keys >= active_keys:
+            logger.warning(f"所有{active_keys}个激活密钥都在冷却中或不可用，暂时无可用密钥。")
+        elif balance_insufficient > 0 and (balance_insufficient + cooldown_keys) >= active_keys:
+            logger.warning(f"部分密钥余额不足或在冷却中，导致暂时无可用密钥。")
+        else:
+            logger.error(f"所有密钥在健康检查后都不可用，原因未知。激活:{active_keys}, 冷却:{cooldown_keys}, 余额不足:{balance_insufficient}")
+        
         return None
 
-    def _get_round_robin_key(
-        self, available_keys: List[SiliconFlowKey], estimated_tokens: int
-    ) -> Optional[SiliconFlowKey]:
-        """改进的轮询策略：确保每个密钥都被调用过一次后再开始下一轮"""
-        # 获取所有可用密钥的ID
-        available_key_ids = {id(key) for key in available_keys}
+    def _get_next_sequential_key(self) -> Optional[SiliconFlowKey]:
+        """批量检查密钥，找到第一个可用的就立即使用"""
+        if not self.sorted_keys:
+            self._reorder_keys_by_balance()
+            if not self.sorted_keys:
+                return None
 
-        # 检查当前轮次是否完成（所有可用密钥都被使用过）
-        if self.keys_used_in_round and available_key_ids.issubset(
-            self.keys_used_in_round
-        ):
-            # 开始新的一轮
-            self.current_round += 1
-            self.keys_used_in_round.clear()
-            logger.debug(
-                f"Starting new round {self.current_round} with {len(available_keys)} keys"
-            )
-
-        # 找到本轮还未使用的密钥
-        unused_keys = [
-            key for key in available_keys if id(key) not in self.keys_used_in_round
-        ]
-
-        # 如果所有密钥都用过了，重新开始
-        if not unused_keys:
-            unused_keys = available_keys
-            self.keys_used_in_round.clear()
-
-        # 在未使用的密钥中按顺序查找可用的（基于官方余额判定有效性）
-        for key in unused_keys:
-            # if self._check_rate_limit(key, estimated_tokens):  # 已移除Token限制检查
-            if key.is_active and (
-                key.balance is None or key.balance > 0
-            ):  # 基于官方余额判定有效性
+        # 从当前索引开始批量检查（每次最多检查3个）
+        start_index = self.current_index
+        checked_count = 0
+        max_check_per_batch = min(self.batch_check_size, len(self.sorted_keys))
+        
+        while checked_count < len(self.sorted_keys):
+            # 确保索引在有效范围内
+            if self.current_index >= len(self.sorted_keys):
+                self.current_index = 0
+            
+            key = self.sorted_keys[self.current_index]
+            
+            # 检查密钥是否可用（跳过禁用和冷却中的密钥）
+            if self._is_key_available(key):
+                # 找到可用密钥，立即返回
+                # 移动到下一个索引为下次调用做准备
+                self.current_index = (self.current_index + 1) % len(self.sorted_keys)
+                logger.debug(f"批量检查找到可用密钥: {key.key[:8]}... (检查了{checked_count + 1}个密钥)")
                 return key
-
-        # 如果未使用的密钥都不可用，检查已使用的密钥
-        used_keys = [
-            key for key in available_keys if id(key) in self.keys_used_in_round
-        ]
-        for key in used_keys:
-            # if self._check_rate_limit(key, estimated_tokens):  # 已移除Token限制检查
-            if key.is_active and (
-                key.balance is None or key.balance > 0
-            ):  # 基于官方余额判定有效性
-                return key
-
+            
+            # 移动到下一个密钥
+            self.current_index = (self.current_index + 1) % len(self.sorted_keys)
+            checked_count += 1
+            
+            # 如果已经检查了一批密钥但没找到可用的，继续检查下一批
+            # 但如果检查了所有密钥都不可用，则退出
+            if checked_count >= max_check_per_batch and checked_count < len(self.sorted_keys):
+                # 已检查完一批，如果还有未检查的密钥，继续下一批
+                max_check_per_batch = min(max_check_per_batch + self.batch_check_size, len(self.sorted_keys))
+        
+        logger.warning("所有密钥都不可用")
         return None
+
+    def _is_key_available(self, key: SiliconFlowKey) -> bool:
+        """检查密钥是否可用（综合检查禁用、冷却、余额状态）"""
+        # 检查基本状态
+        if not key.is_active:
+            return False
+        
+        # 检查余额
+        if key.balance is not None and key.balance <= 0:
+            # 自动禁用余额不足的密钥
+            key.is_active = False
+            logger.warning(f"密钥 {key.key[:8]}... 因余额不足被自动禁用")
+            return False
+        
+        # 检查冷却状态
+        key_id = hashlib.md5(key.key.encode()).hexdigest()[:8]
+        if self._is_key_in_cooldown(key_id):
+            return False
+        
+        return True
 
     def _record_key_usage(self, key: SiliconFlowKey):
         """记录密钥使用情况"""
-        self.keys_used_in_round.add(id(key))
-
-        # 更新轮询跟踪器
+        # 更新使用统计
         key_id = hashlib.md5(key.key.encode()).hexdigest()[:8]
-        if self.current_round not in self.round_robin_tracker:
-            self.round_robin_tracker[self.current_round] = {}
+        current_time = time.time()
+        
+        # 记录使用时间
+        if not hasattr(self, 'key_usage_times'):
+            self.key_usage_times = {}
+        self.key_usage_times[key_id] = current_time
+        
+        # 更新使用计数
+        self.usage_stats.record_key_usage(key_id)
 
-        if key_id not in self.round_robin_tracker[self.current_round]:
-            self.round_robin_tracker[self.current_round][key_id] = 0
-        self.round_robin_tracker[self.current_round][key_id] += 1
+    def _set_key_cooldown(self, key: SiliconFlowKey):
+        """设置密钥冷却状态"""
+        key_id = hashlib.md5(key.key.encode()).hexdigest()[:8]
+        cooldown_end = time.time() + self.cooldown_duration
+        self.key_cooldowns[key_id] = cooldown_end
+        logger.debug(f"密钥 {key.key[:8]}... 进入冷却状态，持续{self.cooldown_duration}秒")
 
-        # 清理旧的轮次数据（保留最近10轮）
-        if len(self.round_robin_tracker) > 10:
-            old_rounds = sorted(self.round_robin_tracker.keys())[:-10]
-            for round_num in old_rounds:
-                del self.round_robin_tracker[round_num]
+    def _is_key_in_cooldown(self, key_id: str) -> bool:
+        """检查密钥是否在冷却中"""
+        if key_id not in self.key_cooldowns:
+            return False
+        
+        current_time = time.time()
+        if current_time >= self.key_cooldowns[key_id]:
+            # 冷却结束，清除记录
+            del self.key_cooldowns[key_id]
+            return False
+        
+        return True
+
+    def _reorder_keys_by_balance(self):
+        """按余额降序重新排序密钥列表"""
+        if not self.keys:
+            return
+        
+        # 按余额降序排序，余额为None的放在最后
+        self.sorted_keys = sorted(
+            self.keys,
+            key=lambda k: k.balance if k.balance is not None else -1,
+            reverse=True
+        )
+        
+        self.last_reorder = time.time()
+        logger.info(f"密钥列表已按余额重新排序，共{len(self.sorted_keys)}个密钥")
+        
+        # 输出前5个密钥的余额信息用于调试
+        if self.sorted_keys:
+            top_keys_info = []
+            for i, key in enumerate(self.sorted_keys[:5]):
+                balance = key.balance if key.balance is not None else "未知"
+                top_keys_info.append(f"#{i+1}: {key.key[:8]}... (余额: {balance})")
+            logger.info(f"余额排序后前5个密钥: {', '.join(top_keys_info)}")
+
+    async def _batch_check_balances(self):
+        """批量检查密钥余额"""
+        if not self.keys:
+            return
+        
+        logger.info("开始批量检查密钥余额...")
+        updated_count = 0
+        
+        for key in self.keys:
+            try:
+                # 简化的余额检查
+                if await self._simple_balance_check(key):
+                    updated_count += 1
+                await asyncio.sleep(0.1)  # 避免请求过于频繁
+            except Exception as e:
+                logger.error(f"检查密钥 {key.key[:8]}... 余额时出错: {e}")
+        
+        # 更新排序
+        if updated_count > 0:
+            self._reorder_keys_by_balance()
+            # 保存更新的余额信息到JSON文件，保持数据一致性
+            try:
+                await self.save_keys()
+                logger.info(f"批量余额检查完成，更新了{updated_count}个密钥，已保存到文件")
+            except Exception as e:
+                logger.error(f"保存余额更新到文件时出错: {e}")
+        
+        self.last_balance_check = time.time()
+
+    async def _simple_balance_check(self, key: SiliconFlowKey) -> bool:
+        """简化的余额检查"""
+        try:
+            headers = {"Authorization": f"Bearer {key.key}"}
+            async with self.session.get(
+                f"{Config.SILICONFLOW_BASE_URL}/user/info",
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as response:
+                if response.status == 200:
+                    try:
+                        data = await response.json()
+                        if 'data' in data and 'balance' in data['data']:
+                            balance = float(data['data']['balance'])
+                            key.balance = balance
+                            logger.debug(f"密钥 {key.key[:8]}... 余额更新: {balance}")
+                            return True
+                    except Exception as e:
+                        logger.warning(f"解析余额信息失败: {e}")
+                return False
+        except Exception as e:
+            logger.error(f"余额检查请求失败: {e}")
+            return False
 
     def get_round_robin_stats(self) -> Dict[str, Any]:
         """获取轮询调度统计信息"""
